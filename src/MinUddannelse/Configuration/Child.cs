@@ -29,6 +29,7 @@ public class ChildSlackConfig
     public string? ChannelId { get; set; }
     public bool EnableBot { get; set; }
     public bool EnableInteractive { get; set; } = true;
+    public bool SendStartupMessage { get; set; } = true;
     public int PollingIntervalSeconds { get; set; } = 5;
     public int CleanupIntervalHours { get; set; } = 1;
 }
@@ -40,6 +41,7 @@ public class ChildTelegramConfig
     public long? ChatId { get; set; }
     public bool EnableBot { get; set; }
     public bool EnableInteractive { get; set; } = true;
+    public bool SendStartupMessage { get; set; } = true;
 }
 
 public class ChildGoogleCalendarConfig

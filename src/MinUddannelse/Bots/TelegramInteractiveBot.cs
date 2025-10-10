@@ -79,7 +79,7 @@ public class TelegramInteractiveBot : IDisposable
                 _logger.LogInformation("Telegram interactive polling disabled - bot will only send messages for {ChildName}", _child.FirstName);
             }
 
-            if (_child.Channels.Telegram.ChatId.HasValue)
+            if (_child.Channels.Telegram.ChatId.HasValue && _child.Channels.Telegram.SendStartupMessage)
             {
                 await SendMessageToTelegram($"Bot for {_child.FirstName} is now online and ready to help!");
             }
