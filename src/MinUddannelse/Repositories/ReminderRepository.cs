@@ -86,6 +86,19 @@ public class ReminderRepository : IReminderRepository
         _logger.LogInformation("Marked reminder {ReminderId} as sent", reminderId);
     }
 
+    public async Task MarkReminderAsUnsentAsync(int reminderId)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(reminderId, 0);
+
+        await _supabase
+            .From<Reminder>()
+            .Where(r => r.Id == reminderId)
+            .Set(r => r.IsSent, false)
+            .Update();
+
+        _logger.LogInformation("Marked reminder {ReminderId} as unsent for retry", reminderId);
+    }
+
     public async Task<List<Reminder>> GetAllRemindersAsync()
     {
         var reminders = await _supabase

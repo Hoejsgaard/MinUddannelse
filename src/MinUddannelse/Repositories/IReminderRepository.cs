@@ -12,6 +12,7 @@ public interface IReminderRepository
     Task<int> AddAutoReminderAsync(string text, DateOnly date, TimeOnly time, string childName, int weekLetterId, string eventType, string eventTitle, decimal confidenceScore);
     Task<List<Reminder>> GetPendingRemindersAsync();
     Task MarkReminderAsSentAsync(int reminderId);
+    Task MarkReminderAsUnsentAsync(int reminderId);
     Task<List<Reminder>> GetAllRemindersAsync();
     Task DeleteReminderAsync(int reminderId);
     Task DeleteAutoExtractedRemindersByWeekLetterIdAsync(int weekLetterId);

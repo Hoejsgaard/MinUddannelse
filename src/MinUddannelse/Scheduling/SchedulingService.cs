@@ -281,14 +281,27 @@ public class SchedulingService : ISchedulingService
             {
                 try
                 {
-                    SendReminderNotification(reminder);
+                    // Mark as sent BEFORE sending (optimistic locking) to prevent race conditions
+                    // This prevents multiple scheduler cycles from picking up the same reminder
                     await _reminderRepository.MarkReminderAsSentAsync(reminder.Id);
+
+                    SendReminderNotification(reminder);
 
                     _logger.LogInformation("Sent reminder {ReminderId}: {Text}", reminder.Id, reminder.Text);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Error sending reminder {ReminderId}", reminder.Id);
+                    _logger.LogError(ex, "Error sending reminder {ReminderId} - marking as unsent for retry", reminder.Id);
+
+                    // If sending failed, mark it back as unsent so it can be retried later
+                    try
+                    {
+                        await _reminderRepository.MarkReminderAsUnsentAsync(reminder.Id);
+                    }
+                    catch (Exception markEx)
+                    {
+                        _logger.LogError(markEx, "Failed to mark reminder {ReminderId} as unsent after send failure", reminder.Id);
+                    }
                 }
             }
         }
@@ -648,7 +661,19 @@ public class SchedulingService : ISchedulingService
                     string message = $"⚠️ *Missed Reminder*{childInfo}: {reminder.Text}\n" +
                                    $"_Was scheduled for {reminderLocalDateTime:HH:mm} ({missedBy.TotalMinutes:F0} minutes ago)_";
 
-                    _logger.LogInformation("Missed reminder notification disabled in current build: {Message}", message);
+                    // Create a modified reminder with the missed notification message for sending
+                    var missedReminder = new Reminder
+                    {
+                        Id = reminder.Id,
+                        Text = message,
+                        ChildName = reminder.ChildName,
+                        RemindDate = reminder.RemindDate,
+                        RemindTime = reminder.RemindTime,
+                        IsSent = reminder.IsSent
+                    };
+
+                    _logger.LogInformation("Sending missed reminder notification for {ChildName}: {Text}", reminder.ChildName, reminder.Text);
+                    SendReminderNotification(missedReminder);
                     await _reminderRepository.MarkReminderAsSentAsync(reminder.Id);
 
                     _logger.LogInformation("Notified about missed reminder: {Text}", reminder.Text);
