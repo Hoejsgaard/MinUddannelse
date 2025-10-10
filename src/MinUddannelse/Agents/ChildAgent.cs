@@ -28,6 +28,10 @@ public class ChildAgent : IChildAgent
     private EventHandler<ChildWeekLetterEventArgs>? _weekLetterHandler;
     private EventHandler<ChildReminderEventArgs>? _reminderHandler;
     private EventHandler<ChildMessageEventArgs>? _messageHandler;
+    private System.Timers.Timer? _botHealthCheckTimer;
+    private DateTime _lastSlackFailure = DateTime.MinValue;
+    private DateTime _lastTelegramFailure = DateTime.MinValue;
+    private readonly TimeSpan _recoveryRetryInterval = TimeSpan.FromMinutes(5);
 
     public ChildAgent(
         Child child,
@@ -61,6 +65,7 @@ public class ChildAgent : IChildAgent
         SubscribeToWeekLetterEvents();
         SubscribeToReminderEvents();
         SubscribeToMessageEvents();
+        StartBotHealthCheckTimer();
 
         if (_postWeekLettersOnStartup)
         {
@@ -93,6 +98,13 @@ public class ChildAgent : IChildAgent
         _slackBot?.Dispose();
         _telegramBot?.Dispose();
 
+        if (_botHealthCheckTimer != null)
+        {
+            _botHealthCheckTimer.Stop();
+            _botHealthCheckTimer.Dispose();
+            _botHealthCheckTimer = null;
+        }
+
         await Task.CompletedTask;
     }
 
@@ -102,18 +114,28 @@ public class ChildAgent : IChildAgent
             _child.Channels?.Slack?.EnableBot == true &&
             !string.IsNullOrEmpty(_child.Channels?.Slack?.ApiToken))
         {
-            _logger.LogInformation("Starting SlackInteractiveBot for {ChildName} on channel {ChannelId}",
-                _child.FirstName, _child.Channels!.Slack!.ChannelId);
+            try
+            {
+                _logger.LogInformation("Starting SlackInteractiveBot for {ChildName} on channel {ChannelId}",
+                    _child.FirstName, _child.Channels!.Slack!.ChannelId);
 
-            _slackBot = new SlackInteractiveBot(
-                _child,
-                _openAiService,
-                _loggerFactory,
-                _child.Channels.Slack.EnableInteractive);
+                _slackBot = new SlackInteractiveBot(
+                    _child,
+                    _openAiService,
+                    _loggerFactory,
+                    _child.Channels.Slack.EnableInteractive);
 
-            await _slackBot.Start();
+                await _slackBot.Start();
 
-            _logger.LogInformation("SlackInteractiveBot started successfully for {ChildName}", _child.FirstName);
+                _logger.LogInformation("SlackInteractiveBot started successfully for {ChildName}", _child.FirstName);
+            }
+            catch (Exception ex)
+            {
+                _lastSlackFailure = DateTime.Now;
+                _logger.LogError(ex, "Failed to start Slack bot for {ChildName} - continuing with degraded functionality. " +
+                                    "Will attempt automatic recovery in {Minutes} minutes.", _child.FirstName, _recoveryRetryInterval.TotalMinutes);
+                _slackBot = null; // Ensure bot is null on failure
+            }
         }
     }
 
@@ -123,17 +145,27 @@ public class ChildAgent : IChildAgent
             _child.Channels?.Telegram?.EnableBot == true &&
             !string.IsNullOrEmpty(_child.Channels?.Telegram?.Token))
         {
-            _logger.LogInformation("Starting TelegramInteractiveBot for {ChildName}", _child.FirstName);
+            try
+            {
+                _logger.LogInformation("Starting TelegramInteractiveBot for {ChildName}", _child.FirstName);
 
-            _telegramBot = new TelegramInteractiveBot(
-                _child,
-                _openAiService,
-                _loggerFactory,
-                _child.Channels.Telegram.EnableInteractive);
+                _telegramBot = new TelegramInteractiveBot(
+                    _child,
+                    _openAiService,
+                    _loggerFactory,
+                    _child.Channels.Telegram.EnableInteractive);
 
-            await _telegramBot.Start();
+                await _telegramBot.Start();
 
-            _logger.LogInformation("TelegramInteractiveBot started successfully for {ChildName}", _child.FirstName);
+                _logger.LogInformation("TelegramInteractiveBot started successfully for {ChildName}", _child.FirstName);
+            }
+            catch (Exception ex)
+            {
+                _lastTelegramFailure = DateTime.Now;
+                _logger.LogError(ex, "Failed to start Telegram bot for {ChildName} - continuing with degraded functionality. " +
+                                    "Will attempt automatic recovery in {Minutes} minutes.", _child.FirstName, _recoveryRetryInterval.TotalMinutes);
+                _telegramBot = null; // Ensure bot is null on failure
+            }
         }
         else
         {
@@ -344,6 +376,63 @@ public class ChildAgent : IChildAgent
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error sending reminder message for {ChildName}", _child.FirstName);
+        }
+    }
+
+    private void StartBotHealthCheckTimer()
+    {
+        _botHealthCheckTimer = new System.Timers.Timer(_recoveryRetryInterval.TotalMilliseconds);
+        _botHealthCheckTimer.Elapsed += async (sender, e) => await PerformBotHealthCheckAsync();
+        _botHealthCheckTimer.AutoReset = true;
+        _botHealthCheckTimer.Start();
+
+        _logger.LogInformation("Started bot health check timer for {ChildName} - checking every {Minutes} minutes",
+                              _child.FirstName, _recoveryRetryInterval.TotalMinutes);
+    }
+
+    private async Task PerformBotHealthCheckAsync()
+    {
+        try
+        {
+            // Check if Slack bot needs recovery
+            if (_slackBot == null &&
+                _child.Channels?.Slack?.Enabled == true &&
+                _child.Channels?.Slack?.EnableBot == true &&
+                !string.IsNullOrEmpty(_child.Channels?.Slack?.ApiToken) &&
+                _lastSlackFailure != DateTime.MinValue &&
+                DateTime.Now - _lastSlackFailure >= _recoveryRetryInterval)
+            {
+                _logger.LogInformation("Attempting Slack bot recovery for {ChildName}", _child.FirstName);
+                await StartSlackBotAsync();
+
+                if (_slackBot != null)
+                {
+                    _logger.LogInformation("✅ Slack bot recovery successful for {ChildName}", _child.FirstName);
+                    _lastSlackFailure = DateTime.MinValue; // Reset failure time on success
+                }
+            }
+
+            // Check if Telegram bot needs recovery
+            if (_telegramBot == null &&
+                _child.Channels?.Telegram?.Enabled == true &&
+                _child.Channels?.Telegram?.EnableBot == true &&
+                !string.IsNullOrEmpty(_child.Channels?.Telegram?.Token) &&
+                _lastTelegramFailure != DateTime.MinValue &&
+                DateTime.Now - _lastTelegramFailure >= _recoveryRetryInterval)
+            {
+                _logger.LogInformation("Attempting Telegram bot recovery for {ChildName}", _child.FirstName);
+                await StartTelegramBotAsync();
+
+                if (_telegramBot != null)
+                {
+                    _logger.LogInformation("✅ Telegram bot recovery successful for {ChildName}", _child.FirstName);
+                    _lastTelegramFailure = DateTime.MinValue; // Reset failure time on success
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during bot health check for {ChildName}", _child.FirstName);
         }
     }
 }
