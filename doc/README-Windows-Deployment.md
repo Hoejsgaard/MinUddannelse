@@ -7,10 +7,10 @@ This guide explains how to deploy MinUddannelse to run automatically on Windows 
 1. **Build self-contained executable:**
    ```cmd
    cd src\MinUddannelse
-   dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o ..\..\bin\win-x64
+   dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
    ```
 
-This creates a single executable at `bin\win-x64\MinUddannelse.exe` (~85MB) with everything embedded.
+This creates a single executable at `src\MinUddannelse\bin\Release\net9.0\win-x64\publish\MinUddannelse.exe` (~85MB) with everything embedded.
 
 ## Installation Methods
 
@@ -30,8 +30,8 @@ This creates a single executable at `bin\win-x64\MinUddannelse.exe` (~85MB) with
 3. Name: "MinUddannelse"
 4. Trigger: "When the computer starts"
 5. Action: "Start a program"
-6. Program: `C:\path\to\your\bin\win-x64\MinUddannelse.exe`
-7. **Important:** In "Actions" tab → "Edit" → Set "Start in" field to: `C:\path\to\your\bin\win-x64`
+6. Program: `C:\path\to\your\src\MinUddannelse\bin\Release\net9.0\win-x64\publish\MinUddannelse.exe`
+7. **Important:** In "Actions" tab → "Edit" → Set "Start in" field to: `C:\path\to\your\src\MinUddannelse\bin\Release\net9.0\win-x64\publish`
 8. In "Conditions" tab: Uncheck "Start the task only if the computer is on AC power"
 9. In "Settings" tab:
    - Check "Run task as soon as possible after a scheduled start is missed"
@@ -54,7 +54,7 @@ This creates a single executable at `bin\win-x64\MinUddannelse.exe` (~85MB) with
 2. Create a batch file `MinUddannelse.bat`:
    ```cmd
    @echo off
-   cd /d "C:\path\to\your\bin\win-x64"
+   cd /d "C:\path\to\your\src\MinUddannelse\bin\Release\net9.0\win-x64\publish"
    MinUddannelse.exe
    ```
 3. Save in the startup folder
