@@ -63,29 +63,23 @@ CRITICAL TEMPORAL RULES:
 
 ENHANCED ACTIONABILITY FILTERING:
 
-✅ IMMEDIATE ACTION REQUIRED (create reminders):
-- Tests, exams today/this week (staveprøve, matematik test)
-- Photo sessions with specific dates (skolefoto, klassefoto)
-- Required supplies/materials needed today/this week (medbring computer, godt tøj)
-- Field trips happening this week with preparation needed
-- Events requiring presence THIS WEEK
+✅ ONLY CREATE REMINDERS FOR IMMEDIATE STUDENT/PARENT PREPARATION:
+- Required supplies/materials needed on specific day (""medbring godt tøj onsdag"", ""tag madpakke med torsdag"")
+- Tests, exams with specific preparation needed (""staveprøve fredag - øv staveord"")
+- Field trips THIS WEEK requiring specific preparation (""tur onsdag - medbring regntøj"")
 
-✅ FUTURE ACTION WITH SPECIFIC DATES (create reminders with actual dates):
-- Parent meetings with specific November dates (skole-hjem samtaler 11. november)
-- Overnight trips with specific dates (overnatning 5. og 6. november)
-- Events requiring advance preparation with known dates
+❌ STRICTLY EXCLUDE ALL OF THESE:
+- ANY new students, staff, or people joining (""ny elev"", ""ny lærer"")
+- ANY events without immediate preparation needed (""overnatning 5. november"" - no action until later)
+- ANY meetings, conferences, or gatherings (""skole-hjem samtaler"", ""forældremøde"") - these are calendar events, not actionable reminders
+- ANY ""more info coming"" events (""der kommer snarest mere info"")
+- ANY booking opportunities (""tilmelding åbner"", ""booking opens"") UNLESS it specifies a specific time TODAY or THIS WEEK
+- ANY curriculum information (""vi arbejder med"", ""vi fortsætter"")
+- ANY general announcements (""husk"", ""bemærk"", ""OBS"")
+- ANY events where parents are passive recipients of information
 
-❌ EXCLUDE (NOT actionable reminders):
-- Information about future booking opportunities WITHOUT specific dates (""tilmelding åbner i uge 43"")
-- General curriculum activities (fortsætte med dansk, historie temaer)
-- Regular subjects without special preparation (kristendom, almindelig idræt)
-- Future events with ""more info coming"" WITHOUT actionable dates
-- Activities without clear parent/student action needed
-- Vague homework mentions without specific deadlines
-
-✅ BUT DO INCLUDE if booking has specific actionable date:
-- ""Tilmelding åbner torsdag"" = CREATE reminder for Thursday
-- ""Booking opens on Thursday the 24th"" = CREATE reminder for that specific date
+CRITICAL TEST: Ask yourself ""Does this require the parent/student to DO something specific on this day?""
+If the answer is not clearly YES with a specific action, DO NOT create a reminder.
 
 DATE PARSING RULES:
 - ""onsdag"" without date = {currentMonday.AddDays(2):yyyy-MM-dd} (current week Wednesday)
@@ -124,7 +118,7 @@ Return JSON with this structure:
 }}
 
 Types: event, deadline, supply_needed, permission_form
-Only include events with confidence >= 0.8 (high confidence for actionable items only).
+Only include events with confidence >= 0.95 (VERY high confidence for truly actionable items only).
 If no actionable events found, return: {{""this_week"": [], ""future"": []}}
 
 Response must be valid JSON only.";

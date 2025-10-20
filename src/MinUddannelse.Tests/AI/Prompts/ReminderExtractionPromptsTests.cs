@@ -93,7 +93,7 @@ public class ReminderExtractionPromptsTests
 
         // Assert
         Assert.Contains("Extract ONLY actionable events", result);
-        Assert.Contains("Only include events with confidence >= 0.8", result);
+        Assert.Contains("Only include events with confidence >= 0.95", result);
         Assert.Contains("Types: event, deadline, supply_needed, permission_form", result);
         Assert.Contains("You must respond with ONLY valid JSON", result);
         Assert.Contains("No explanations, no markdown", result);
@@ -232,11 +232,10 @@ public class ReminderExtractionPromptsTests
         var result = ReminderExtractionPrompts.GetWeekLetterEventExtractionPrompt(content, currentTime);
 
         // Assert - Check enhanced filtering rules
-        Assert.Contains("Information about future booking opportunities WITHOUT specific dates", result);
-        Assert.Contains("Future events with \"more info coming\" WITHOUT actionable dates", result);
-        Assert.Contains("BUT DO INCLUDE if booking has specific actionable date:", result);
-        Assert.Contains("\"Tilmelding åbner torsdag\" = CREATE reminder for Thursday", result);
-        Assert.Contains("\"Booking opens on Thursday the 24th\" = CREATE reminder for that specific date", result);
+        Assert.Contains("STRICTLY EXCLUDE ALL OF THESE:", result);
+        Assert.Contains("ANY new students, staff, or people joining", result);
+        Assert.Contains("ANY events without immediate preparation needed", result);
+        Assert.Contains("CRITICAL TEST: Ask yourself \"Does this require the parent/student to DO something specific on this day?\"", result);
     }
 
     [Theory]

@@ -44,7 +44,7 @@ public class TemporalReminderParsingTests
                     ""description"": ""Afslutning af vores forløb i Haver til Maver - eleverne skal have godt tøj på"",
                     ""date"": ""2025-10-22"",
                     ""type"": ""event"",
-                    ""confidence"": 0.9
+                    ""confidence"": 0.95
                 }
             ],
             ""future"": [
@@ -53,7 +53,7 @@ public class TemporalReminderParsingTests
                     ""description"": ""Overnatning i Ganløsehytten den 5. og 6. november"",
                     ""date"": ""2025-11-05"",
                     ""type"": ""event"",
-                    ""confidence"": 0.8
+                    ""confidence"": 0.955
                 }
             ]
         }";
@@ -131,7 +131,7 @@ public class TemporalReminderParsingTests
                     ""description"": ""This should be included"",
                     ""date"": ""2025-11-15"",
                     ""type"": ""event"",
-                    ""confidence"": 0.8
+                    ""confidence"": 0.955
                 }
             ]
         }";
@@ -157,7 +157,7 @@ public class TemporalReminderParsingTests
                     ""description"": ""Monday event"",
                     ""date"": ""2025-10-20"",
                     ""type"": ""event"",
-                    ""confidence"": 0.9
+                    ""confidence"": 0.95
                 },
                 {
                     ""day"": ""fredag"",
@@ -165,7 +165,7 @@ public class TemporalReminderParsingTests
                     ""description"": ""Friday event"",
                     ""date"": ""2025-10-24"",
                     ""type"": ""deadline"",
-                    ""confidence"": 0.8
+                    ""confidence"": 0.955
                 }
             ],
             ""future"": [
@@ -174,14 +174,14 @@ public class TemporalReminderParsingTests
                     ""description"": ""November event"",
                     ""date"": ""2025-11-10"",
                     ""type"": ""event"",
-                    ""confidence"": 0.9
+                    ""confidence"": 0.95
                 },
                 {
                     ""title"": ""Future Event 2"",
                     ""description"": ""December event"",
                     ""date"": ""2025-12-05"",
                     ""type"": ""permission_form"",
-                    ""confidence"": 0.8
+                    ""confidence"": 0.955
                 }
             ]
         }";
@@ -221,7 +221,7 @@ public class TemporalReminderParsingTests
                     ""description"": ""Test description"",
                     ""date"": ""2025-11-10"",
                     ""type"": ""{eventType}"",
-                    ""confidence"": 0.9
+                    ""confidence"": 0.95
                 }}
             ]
         }}";
@@ -246,7 +246,7 @@ public class TemporalReminderParsingTests
                     ""description"": ""Description with &quot;quotes&quot; and &lt;tags&gt;"",
                     ""date"": ""2025-10-22"",
                     ""type"": ""event"",
-                    ""confidence"": 0.9
+                    ""confidence"": 0.95
                 }
             ],
             ""future"": []

@@ -405,6 +405,9 @@ public class SchedulingService : ISchedulingService
             ChildWeekLetterReady?.Invoke(this, eventArgs);
             await _weekLetterRepository.MarkWeekLetterAsPostedAsync(child.FirstName, weekNumber, year, result.Item2!);
 
+            // Add a small delay to ensure week letter is posted before reminders
+            await Task.Delay(1000);
+
             await ExtractRemindersFromWeekLetter(child.FirstName, weekNumber, year, weekLetter, result.Item2!);
 
             _logger.LogInformation("Emitted week letter event for {ChildName}", child.FirstName);
