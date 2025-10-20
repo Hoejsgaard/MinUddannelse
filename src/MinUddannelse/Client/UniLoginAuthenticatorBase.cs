@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Web;
 using HtmlAgilityPack;
@@ -50,7 +51,27 @@ public abstract class UniLoginAuthenticatorBase : IDisposable
         _studentDataPath = studentDataPath;
     }
 
-    protected HttpClient CreateHttpClient() => _httpClientFactory.CreateClient("UniLogin");
+    private readonly CookieContainer _cookieContainer = new CookieContainer();
+
+    protected HttpClient CreateHttpClient()
+    {
+        // Create HTTP client with shared cookie container for this child instance
+        // This prevents session contamination between children while maintaining
+        // cookie sharing within a single child's authentication session
+        var handler = new HttpClientHandler
+        {
+            AllowAutoRedirect = true,
+            UseCookies = true,
+            CookieContainer = _cookieContainer, // Shared container for this child instance
+            AutomaticDecompression = System.Net.DecompressionMethods.All
+        };
+
+        var client = new HttpClient(handler);
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+        client.Timeout = TimeSpan.FromMinutes(2);
+
+        return client;
+    }
     protected string SuccessUrl { get; }
 
     public async Task<bool> LoginAsync()
