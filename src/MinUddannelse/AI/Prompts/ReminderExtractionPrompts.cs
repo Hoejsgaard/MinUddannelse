@@ -37,6 +37,7 @@ CHILD: [child name or NONE]";
         var year = currentTime.Year;
 
         var currentMonday = currentTime.Date.AddDays(-(int)currentTime.DayOfWeek + (int)DayOfWeek.Monday);
+        var currentFriday = currentMonday.AddDays(4);
 
         return $@"You must respond with ONLY valid JSON. No explanations, no markdown, no text outside the JSON.
 
@@ -44,7 +45,8 @@ Extract ONLY actionable events that require parent/student preparation from this
 
 Current context:
 - Today: {currentTime:yyyy-MM-dd} ({currentTime:dddd})
-- Week {weekNumber} dates:
+- Current week {weekNumber} spans: {currentMonday:yyyy-MM-dd} to {currentFriday:yyyy-MM-dd}
+- Week {weekNumber} days:
   * Mandag: {currentMonday:yyyy-MM-dd}
   * Tirsdag: {currentMonday.AddDays(1):yyyy-MM-dd}
   * Onsdag: {currentMonday.AddDays(2):yyyy-MM-dd}
@@ -53,64 +55,78 @@ Current context:
 
 Week Letter: ""{weekLetterContent}""
 
-CRITICAL FILTERING RULES - Only create reminders for events that require ACTION:
+CRITICAL TEMPORAL RULES:
+1. **Parse actual dates first** - If you see ""11. november"", ""20/11"", ""5. og 6. november"" - these are ACTUAL DATES, not current week days
+2. **Current Week Events**: Only use Monday-Friday if event explicitly happens this week WITHOUT a specific date
+3. **Future Events**: Events with specific dates (November, etc.) stay as their actual dates
+4. **Information Only**: Items about ""booking will open"", ""more info coming"" are NOT actionable reminders
 
-✅ INCLUDE (require parent/student preparation):
-- Tests, exams, or assessments (staveprøve, matematik test, etc.)
-- Photo sessions (skolefoto, klassefoto)
-- Permission forms or deadlines (tilmeldingsblanket, betaling)
-- Required supplies or materials (medbring computer, sportsudstyr)
-- Field trips and excursions (udflugter, ekskursioner, museumsbesøg)
-- Sports events and competitions (idrætsdag, sportsstævne, løb)
-- Special events requiring presence (skoleforestilling, koncert)
-- Parent meetings or conferences (forældremøde)
+ENHANCED ACTIONABILITY FILTERING:
 
-❌ EXCLUDE (regular classroom activities - NO reminders needed):
-- Normal curriculum work (læse bøger, matematik opgaver)
-- Regular classroom projects (billedkunst, dansk projekter)
-- General teaching activities (fortsætte med emne X)
-- Routine subjects (historie, kristendom, regular idræt/PE lessons)
-- Books being finished/started (afslutning af bog X, start på bog Y)
-- Regular sports activities (fodboldforløb, svømning generelt)
+✅ IMMEDIATE ACTION REQUIRED (create reminders):
+- Tests, exams today/this week (staveprøve, matematik test)
+- Photo sessions with specific dates (skolefoto, klassefoto)
+- Required supplies/materials needed today/this week (medbring computer, godt tøj)
+- Field trips happening this week with preparation needed
+- Events requiring presence THIS WEEK
 
-IMPORTANT:
-- When you see Danish day names like ""Torsdag"", map them to the exact dates above
-- Generate comprehensive reminder descriptions in DANISH
-- Include event name, time, and any preparation details in the description
-- Extract full context and specifics from the week letter
-- Make descriptions rich and informative
-- DO NOT use ""Husk"" or ""i dag"" in descriptions - just the activity details
-- Include times when mentioned (use ""kl."" format)
-- Add preparation details when mentioned in the letter
+✅ FUTURE ACTION WITH SPECIFIC DATES (create reminders with actual dates):
+- Parent meetings with specific November dates (skole-hjem samtaler 11. november)
+- Overnight trips with specific dates (overnatning 5. og 6. november)
+- Events requiring advance preparation with known dates
 
-For description examples:
-- ""Motionsdag kl. 8.00 - husk turtaske med 10-bid, drikkedunk, madpakke og tøj der passer til vejret""
-- ""Staveprøve kl. 12.45 - medbring opladt computer og hovedtelefoner""
-- ""Fotograf fra 10.35-11.15 - alle børn skal være til stede""
-- ""Skolefoto kl. 9.00 - børn skal være pænt påklædt""
-- ""Udflugter til Experimentarium kl. 9.30 - medbring madpakke og drikkedunk""
+❌ EXCLUDE (NOT actionable reminders):
+- Information about future booking opportunities WITHOUT specific dates (""tilmelding åbner i uge 43"")
+- General curriculum activities (fortsætte med dansk, historie temaer)
+- Regular subjects without special preparation (kristendom, almindelig idræt)
+- Future events with ""more info coming"" WITHOUT actionable dates
+- Activities without clear parent/student action needed
+- Vague homework mentions without specific deadlines
 
-CRITICAL:
-- The description should be a complete, standalone reminder text
-- Include all relevant details from the week letter
-- Use natural Danish phrasing
-- Focus on what parents/students need to know and prepare
+✅ BUT DO INCLUDE if booking has specific actionable date:
+- ""Tilmelding åbner torsdag"" = CREATE reminder for Thursday
+- ""Booking opens on Thursday the 24th"" = CREATE reminder for that specific date
 
-Return a JSON array of events. If no events found, return: []
+DATE PARSING RULES:
+- ""onsdag"" without date = {currentMonday.AddDays(2):yyyy-MM-dd} (current week Wednesday)
+- ""onsdag den 22. oktober"" = 2025-10-22 (specific date)
+- ""tirsdag 11. november"" = 2025-11-11 (specific date)
+- ""5. og 6. november"" = 2025-11-05 (use start date, but include full range in description)
+- ""torsdag den 20/11"" = 2025-11-20 (specific date)
 
-JSON format:
-[
-  {{
-    ""type"": ""deadline"",
-    ""title"": ""Kort dansk titel"",
-    ""description"": ""Husk [actionable reminder text in Danish]"",
-    ""date"": ""yyyy-MM-dd"",
-    ""confidence"": 0.8
-  }}
-]
+DESCRIPTION QUALITY:
+- Rich, standalone Danish text with full context
+- Include times when mentioned (""kl. 8.00"")
+- Include preparation details (""medbring madpakke"", ""godt tøj til vejret"")
+- NO generic prefixes like ""Husk:"" or ""Event:""
 
-Event types: deadline, permission_form, event, supply_needed
-Only include events with confidence >= 0.8 (high confidence only for actionable items).
+Return JSON with this structure:
+{{
+  ""this_week"": [
+    {{
+      ""day"": ""onsdag"",
+      ""title"": ""Kort dansk titel"",
+      ""description"": ""Complete actionable reminder in Danish"",
+      ""date"": ""yyyy-MM-dd"",
+      ""type"": ""event"",
+      ""confidence"": 0.9
+    }}
+  ],
+  ""future"": [
+    {{
+      ""title"": ""Kort dansk titel"",
+      ""description"": ""Complete actionable reminder in Danish"",
+      ""date"": ""yyyy-MM-dd"",
+      ""type"": ""deadline"",
+      ""confidence"": 0.9
+    }}
+  ]
+}}
+
+Types: event, deadline, supply_needed, permission_form
+Only include events with confidence >= 0.8 (high confidence for actionable items only).
+If no actionable events found, return: {{""this_week"": [], ""future"": []}}
+
 Response must be valid JSON only.";
     }
 }

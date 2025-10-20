@@ -624,16 +624,38 @@ public class SchedulingService : ISchedulingService
     {
         var message = $"Jeg har oprettet {reminderCount} påmindelser for uge {weekNumber}:";
 
-        var groupedByDay = createdReminders
-            .GroupBy(r => r.Date.ToString("dddd", new System.Globalization.CultureInfo("da-DK")))
-            .OrderBy(g => createdReminders.First(r => r.Date.ToString("dddd", new System.Globalization.CultureInfo("da-DK")) == g.Key).Date);
+        // Separate current week and future reminders
+        var currentWeekReminders = createdReminders.Where(r => r.IsCurrentWeek).ToList();
+        var futureReminders = createdReminders.Where(r => !r.IsCurrentWeek).ToList();
 
-        foreach (var dayGroup in groupedByDay)
+        // Process current week reminders (show as day names)
+        if (currentWeekReminders.Any())
         {
-            foreach (var reminder in dayGroup)
+            var groupedByDay = currentWeekReminders
+                .GroupBy(r => r.DayOfWeek ?? r.Date.ToString("dddd", new System.Globalization.CultureInfo("da-DK")))
+                .OrderBy(g => currentWeekReminders.First(r => (r.DayOfWeek ?? r.Date.ToString("dddd", new System.Globalization.CultureInfo("da-DK"))) == g.Key).Date);
+
+            foreach (var dayGroup in groupedByDay)
+            {
+                foreach (var reminder in dayGroup)
+                {
+                    var timeInfo = !string.IsNullOrEmpty(reminder.EventTime) ? $" kl. {reminder.EventTime}" : "";
+                    var dayName = char.ToUpper(dayGroup.Key[0]) + dayGroup.Key.Substring(1);
+                    message += $"\n• {dayName}: {reminder.Title}{timeInfo}";
+                }
+            }
+        }
+
+        // Process future reminders (show with actual dates)
+        if (futureReminders.Any())
+        {
+            var orderedFutureReminders = futureReminders.OrderBy(r => r.Date);
+
+            foreach (var reminder in orderedFutureReminders)
             {
                 var timeInfo = !string.IsNullOrEmpty(reminder.EventTime) ? $" kl. {reminder.EventTime}" : "";
-                message += $"\n• {char.ToUpper(dayGroup.Key[0])}{dayGroup.Key.Substring(1)}: {reminder.Title}{timeInfo}";
+                var dateInfo = reminder.Date.ToString("d. MMMM", new System.Globalization.CultureInfo("da-DK"));
+                message += $"\n• {dateInfo}: {reminder.Title}{timeInfo}";
             }
         }
 

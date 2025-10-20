@@ -120,7 +120,9 @@ public class WeekLetterReminderService : IWeekLetterReminderService
                     {
                         Title = reminderText,
                         Date = extractedEvent.EventDate,
-                        EventTime = null
+                        EventTime = null,
+                        IsCurrentWeek = extractedEvent.IsCurrentWeek,
+                        DayOfWeek = extractedEvent.DayOfWeek
                     });
 
                     _logger.LogInformation("Created auto-extracted reminder for {ChildName}: {ReminderText}",
@@ -219,18 +221,54 @@ public class WeekLetterReminderService : IWeekLetterReminderService
             }
             cleanedResponse = cleanedResponse.Trim();
 
-            var jsonEvents = JArray.Parse(cleanedResponse);
-            return jsonEvents
-                .Select(je => new ExtractedEvent
+            var jsonResponse = JObject.Parse(cleanedResponse);
+            var extractedEvents = new List<ExtractedEvent>();
+
+            // Parse current week events
+            var thisWeekEvents = jsonResponse["this_week"]?.ToArray() ?? Array.Empty<JToken>();
+            foreach (var weekEvent in thisWeekEvents)
+            {
+                var extractedEvent = new ExtractedEvent
                 {
-                    Title = System.Net.WebUtility.HtmlDecode(je["title"]?.ToString() ?? string.Empty),
-                    Description = System.Net.WebUtility.HtmlDecode(je["description"]?.ToString() ?? string.Empty),
-                    EventDate = DateTime.Parse(je["date"]?.ToString() ?? DateTime.Today.ToString("yyyy-MM-dd")),
-                    EventType = je["type"]?.ToString() ?? "event",
-                    ConfidenceScore = je["confidence"]?.Value<double>() ?? 0.8
-                })
-                .Where(e => e.ConfidenceScore >= 0.6)
-                .ToList();
+                    Title = System.Net.WebUtility.HtmlDecode(weekEvent["title"]?.ToString() ?? string.Empty),
+                    Description = System.Net.WebUtility.HtmlDecode(weekEvent["description"]?.ToString() ?? string.Empty),
+                    EventDate = DateTime.Parse(weekEvent["date"]?.ToString() ?? DateTime.Today.ToString("yyyy-MM-dd")),
+                    EventType = weekEvent["type"]?.ToString() ?? "event",
+                    ConfidenceScore = weekEvent["confidence"]?.Value<double>() ?? 0.8,
+                    IsCurrentWeek = true,
+                    DayOfWeek = weekEvent["day"]?.ToString()
+                };
+
+                if (extractedEvent.ConfidenceScore >= 0.6)
+                {
+                    extractedEvents.Add(extractedEvent);
+                }
+            }
+
+            // Parse future events
+            var futureEvents = jsonResponse["future"]?.ToArray() ?? Array.Empty<JToken>();
+            foreach (var futureEvent in futureEvents)
+            {
+                var extractedEvent = new ExtractedEvent
+                {
+                    Title = System.Net.WebUtility.HtmlDecode(futureEvent["title"]?.ToString() ?? string.Empty),
+                    Description = System.Net.WebUtility.HtmlDecode(futureEvent["description"]?.ToString() ?? string.Empty),
+                    EventDate = DateTime.Parse(futureEvent["date"]?.ToString() ?? DateTime.Today.ToString("yyyy-MM-dd")),
+                    EventType = futureEvent["type"]?.ToString() ?? "event",
+                    ConfidenceScore = futureEvent["confidence"]?.Value<double>() ?? 0.8,
+                    IsCurrentWeek = false
+                };
+
+                if (extractedEvent.ConfidenceScore >= 0.6)
+                {
+                    extractedEvents.Add(extractedEvent);
+                }
+            }
+
+            _logger.LogInformation("Parsed {ThisWeekCount} current week and {FutureCount} future events",
+                thisWeekEvents.Length, futureEvents.Length);
+
+            return extractedEvents;
         }
         catch (Exception ex)
         {
@@ -298,4 +336,6 @@ public class ExtractedEvent
     public DateTime EventDate { get; set; }
     public string EventType { get; set; } = "event";
     public double ConfidenceScore { get; set; } = 0.8;
+    public bool IsCurrentWeek { get; set; } = false;
+    public string? DayOfWeek { get; set; }
 }

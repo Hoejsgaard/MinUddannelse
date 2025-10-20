@@ -27,4 +27,6 @@ public class CreatedReminderInfo
     public string Title { get; set; } = string.Empty;
     public DateTime Date { get; set; }
     public string? EventTime { get; set; }
+    public bool IsCurrentWeek { get; set; } = false;
+    public string? DayOfWeek { get; set; }
 }
