@@ -57,10 +57,11 @@ public class ReminderRepository : IReminderRepository
         var currentDate = DateOnly.FromDateTime(now);
         var currentTime = TimeOnly.FromDateTime(now);
 
+        // Get all unsent reminders and filter in memory to avoid DateOnly serialization issues with PostgreSQL
         var reminders = await _supabase
             .From<Reminder>()
             .Select("*")
-            .Where(r => r.RemindDate <= currentDate && r.IsSent == false)
+            .Where(r => r.IsSent == false)
             .Get();
 
         var pendingReminders = reminders.Models
