@@ -230,6 +230,8 @@ CREATE TABLE IF NOT EXISTS scheduled_tasks (
   max_retry_hours INTEGER DEFAULT 48,
   last_run TIMESTAMPTZ,
   next_run TIMESTAMPTZ,
+  task_type VARCHAR(50) DEFAULT 'hardcoded' NOT NULL,
+  reminder_id INTEGER REFERENCES reminders(id),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -237,6 +239,8 @@ CREATE TABLE IF NOT EXISTS scheduled_tasks (
 COMMENT ON TABLE scheduled_tasks IS 'Cron-based task scheduling configuration';
 COMMENT ON COLUMN scheduled_tasks.cron_expression IS 'Cron format: "minute hour day month weekday" (e.g., "0 16 * * 0" = Sundays 4PM)';
 COMMENT ON COLUMN scheduled_tasks.retry_interval_hours IS 'Hours between retry attempts for failed tasks';
+COMMENT ON COLUMN scheduled_tasks.task_type IS 'Type of scheduled task: hardcoded (built-in) or reminder (user-created recurring reminder)';
+COMMENT ON COLUMN scheduled_tasks.reminder_id IS 'Links to template reminder in reminders table (for task_type=reminder only)';
 
 -- Index for task scheduling
 CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_enabled ON scheduled_tasks(enabled, next_run);
