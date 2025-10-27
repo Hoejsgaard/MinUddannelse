@@ -191,7 +191,16 @@ public class TelegramInteractiveBot : IDisposable
             _ => exception.ToString()
         };
 
-        _logger.LogError(exception, "Telegram polling error for {ChildName}: {Error}", _child.FirstName, errorMessage);
+        // Handle 409 conflicts as warnings since they're expected during concurrent access
+        if (exception is ApiRequestException { ErrorCode: 409 })
+        {
+            _logger.LogWarning("Telegram API conflict for {ChildName} (409): {Error} - This is normal during polling conflicts",
+                _child.FirstName, errorMessage);
+        }
+        else
+        {
+            _logger.LogError(exception, "Telegram polling error for {ChildName}: {Error}", _child.FirstName, errorMessage);
+        }
 
         return Task.CompletedTask;
     }
