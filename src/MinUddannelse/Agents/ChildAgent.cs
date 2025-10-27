@@ -96,7 +96,13 @@ public class ChildAgent : IChildAgent
         }
 
         _slackBot?.Dispose();
-        _telegramBot?.Dispose();
+
+        if (_telegramBot != null)
+        {
+            _telegramBot.Stop();
+            _telegramBot.Dispose();
+            _telegramBot = null;
+        }
 
         if (_botHealthCheckTimer != null)
         {
@@ -147,6 +153,15 @@ public class ChildAgent : IChildAgent
         {
             try
             {
+                // Properly dispose existing bot before creating new one
+                if (_telegramBot != null)
+                {
+                    _logger.LogInformation("Stopping existing Telegram bot for {ChildName} before starting new one", _child.FirstName);
+                    _telegramBot.Stop();
+                    _telegramBot.Dispose();
+                    _telegramBot = null;
+                }
+
                 _logger.LogInformation("Starting TelegramInteractiveBot for {ChildName}", _child.FirstName);
 
                 _telegramBot = new TelegramInteractiveBot(
