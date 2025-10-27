@@ -14,6 +14,7 @@ public interface IReminderRepository
     Task MarkReminderAsSentAsync(int reminderId);
     Task MarkReminderAsUnsentAsync(int reminderId);
     Task<List<Reminder>> GetAllRemindersAsync();
+    Task<Reminder?> GetReminderByIdAsync(int reminderId);
     Task DeleteReminderAsync(int reminderId);
     Task DeleteAutoExtractedRemindersByWeekLetterIdAsync(int weekLetterId);
 }

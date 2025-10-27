@@ -245,19 +245,69 @@ public class SchedulingService : ISchedulingService
 
     private async Task ExecuteTask(ScheduledTask task)
     {
-        switch (task.Name)
+        // Handle tasks by their TaskType first, then fall back to Name for legacy tasks
+        switch (task.TaskType)
         {
-            case "ReminderCheck":
-                await ExecutePendingReminders();
+            case "reminder":
+                await ExecuteRecurringReminder(task);
                 break;
 
-            case "WeeklyLetterCheck":
-                await ExecuteWeeklyLetterCheck(task);
-                break;
-
+            case "hardcoded":
             default:
-                _logger.LogWarning("Unknown scheduled task: {TaskName}", task.Name);
+                // Handle legacy hardcoded tasks by their Name
+                switch (task.Name)
+                {
+                    case "ReminderCheck":
+                        await ExecutePendingReminders();
+                        break;
+
+                    case "WeeklyLetterCheck":
+                        await ExecuteWeeklyLetterCheck(task);
+                        break;
+
+                    default:
+                        _logger.LogWarning("Unknown scheduled task: {TaskName} with TaskType: {TaskType}", task.Name, task.TaskType);
+                        break;
+                }
                 break;
+        }
+    }
+
+    private async Task ExecuteRecurringReminder(ScheduledTask task)
+    {
+        try
+        {
+            if (!task.ReminderId.HasValue)
+            {
+                _logger.LogError("Recurring reminder task {TaskName} has no ReminderId", task.Name);
+                return;
+            }
+
+            // Load the template reminder
+            var templateReminder = await _reminderRepository.GetReminderByIdAsync(task.ReminderId.Value);
+            if (templateReminder == null)
+            {
+                _logger.LogError("Template reminder with ID {ReminderId} not found for task {TaskName}",
+                    task.ReminderId.Value, task.Name);
+                return;
+            }
+
+            // Create actual reminder for today using the template
+            var today = DateOnly.FromDateTime(DateTime.Now);
+            var reminderTime = templateReminder.RemindTime;
+
+            var newReminderId = await _reminderRepository.AddReminderAsync(
+                templateReminder.Text,
+                today,
+                reminderTime,
+                templateReminder.ChildName);
+
+            _logger.LogInformation("Created recurring reminder {NewReminderId} from template {TemplateId}: '{Description}' for {ChildName} at {Time}",
+                newReminderId, templateReminder.Id, templateReminder.Text, templateReminder.ChildName, reminderTime);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error executing recurring reminder task {TaskName}", task.Name);
         }
     }
 

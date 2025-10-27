@@ -8,6 +8,8 @@ public static class ReminderExtractionPrompts
 {
     public static string GetExtractionPrompt(string query, DateTime currentTime)
     {
+        var nextMonday = GetNextWeekday(currentTime, DayOfWeek.Monday);
+
         return $@"Extract reminder details from this natural language request:
 
 Query: ""{query}""
@@ -16,19 +18,56 @@ Extract:
 1. Description: What to remind about
 2. DateTime: When to remind (convert to yyyy-MM-dd HH:mm format)
 3. ChildName: If mentioned, the child's name (optional)
+4. IsRecurring: Whether this is a recurring reminder
+5. RecurrenceType: daily, weekly, monthly (if recurring)
+6. DayOfWeek: 0=Sunday, 1=Monday, etc. (for weekly recurrence)
+
+RECURRING PATTERN DETECTION:
+Danish patterns for recurring reminders:
+- ""hver dag"" / ""dagligt"" = daily recurring
+- ""hver mandag"" / ""hver mandag morgen"" = weekly recurring (Monday)
+- ""hver tirsdag"" = weekly recurring (Tuesday)
+- ""hver onsdag"" = weekly recurring (Wednesday)
+- ""hver torsdag"" = weekly recurring (Thursday)
+- ""hver fredag"" = weekly recurring (Friday)
+- ""hver lørdag"" = weekly recurring (Saturday)
+- ""hver søndag"" = weekly recurring (Sunday)
+
+English patterns:
+- ""every day"" / ""daily"" = daily recurring
+- ""every Monday"" / ""every Monday morning"" = weekly recurring (Monday)
+- ""weekly"" = weekly recurring (use day from datetime)
 
 For relative dates (current time is {currentTime:yyyy-MM-dd HH:mm}):
 - ""tomorrow"" = {currentTime.Date.AddDays(1):yyyy-MM-dd}
 - ""today"" = {currentTime.Date:yyyy-MM-dd}
-- ""next Monday"" = calculate the next Monday
+- ""next Monday"" = {nextMonday:yyyy-MM-dd}
+- ""mandag"" (without ""hver"") = {nextMonday:yyyy-MM-dd}
 - ""in 2 hours"" = {currentTime.AddHours(2):yyyy-MM-dd HH:mm}
 - ""om 2 minutter"" = {currentTime.AddMinutes(2):yyyy-MM-dd HH:mm}
 - ""om 30 minutter"" = {currentTime.AddMinutes(30):yyyy-MM-dd HH:mm}
 
+For recurring reminders:
+- Use the NEXT occurrence of the specified day/time as the DateTime
+- Set IsRecurring=true and provide RecurrenceType and DayOfWeek
+
 Respond in this exact format:
 DESCRIPTION: [extracted description]
 DATETIME: [yyyy-MM-dd HH:mm]
-CHILD: [child name or NONE]";
+CHILD: [child name or NONE]
+IS_RECURRING: [true or false]
+RECURRENCE_TYPE: [daily/weekly/monthly or NONE]
+DAY_OF_WEEK: [0-6 or NONE]";
+    }
+
+    private static DateTime GetNextWeekday(DateTime currentTime, DayOfWeek targetDay)
+    {
+        var daysUntilTarget = ((int)targetDay - (int)currentTime.DayOfWeek + 7) % 7;
+        if (daysUntilTarget == 0 && currentTime.TimeOfDay > TimeSpan.FromHours(12))
+        {
+            daysUntilTarget = 7; // If it's past noon on the target day, go to next week
+        }
+        return currentTime.Date.AddDays(daysUntilTarget == 0 ? 7 : daysUntilTarget);
     }
 
     public static string GetWeekLetterEventExtractionPrompt(string weekLetterContent, DateTime currentTime)

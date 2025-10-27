@@ -61,7 +61,7 @@ public class TelegramInteractiveBot : IDisposable
 
                 var receiverOptions = new ReceiverOptions
                 {
-                    AllowedUpdates = new[] { UpdateType.Message },
+                    AllowedUpdates = new[] { UpdateType.Message, UpdateType.ChannelPost },
                     ThrowPendingUpdates = true
                 };
 
@@ -130,7 +130,10 @@ public class TelegramInteractiveBot : IDisposable
 
     private async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
     {
-        if (update.Message is not { } message)
+        // Handle both regular messages and channel posts
+        Message? message = update.Message ?? update.ChannelPost;
+
+        if (message == null)
             return;
 
         if (message.Type != MessageType.Text || string.IsNullOrEmpty(message.Text))

@@ -44,6 +44,37 @@ public class ScheduledTaskRepository : IScheduledTaskRepository
         return result.Models.FirstOrDefault();
     }
 
+    public async Task<int> AddScheduledTaskAsync(ScheduledTask task)
+    {
+        ArgumentNullException.ThrowIfNull(task);
+        ArgumentException.ThrowIfNullOrWhiteSpace(task.Name);
+        ArgumentException.ThrowIfNullOrWhiteSpace(task.CronExpression);
+
+        task.CreatedAt = DateTime.UtcNow;
+        task.UpdatedAt = DateTime.UtcNow;
+
+        // Initialize LastRun to current time to prevent immediate execution
+        // This ensures new scheduled tasks don't fire immediately upon creation
+        if (task.LastRun == null)
+        {
+            task.LastRun = DateTime.UtcNow;
+            _logger.LogInformation("Initialized LastRun to {LastRun} for new scheduled task: {TaskName}", task.LastRun, task.Name);
+        }
+
+        var insertResponse = await _supabase
+            .From<ScheduledTask>()
+            .Insert(task);
+
+        var insertedTask = insertResponse.Models.FirstOrDefault();
+        if (insertedTask == null)
+        {
+            throw new InvalidOperationException("Failed to insert scheduled task");
+        }
+
+        _logger.LogInformation("Added scheduled task with ID {TaskId}: {TaskName}", insertedTask.Id, task.Name);
+        return insertedTask.Id;
+    }
+
     public async Task UpdateScheduledTaskAsync(ScheduledTask task)
     {
         task.UpdatedAt = DateTime.UtcNow;

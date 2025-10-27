@@ -372,17 +372,91 @@ public class WeekLetterAiService : IWeekLetterAiService
             return toolType switch
             {
                 "CREATE_REMINDER" => await HandleCreateReminderQuery(query),
-                "LIST_REMINDERS" => await _aiToolsManager.ListRemindersAsync(),
+                "LIST_REMINDERS" => await HandleListRemindersQuery(query),
                 "DELETE_REMINDER" => await HandleDeleteReminderQuery(query),
-                "GET_CURRENT_TIME" => _aiToolsManager.GetCurrentDateTime(),
-                "HELP" => _aiToolsManager.GetHelp(),
+                "GET_CURRENT_TIME" => await HandleGetCurrentTimeQuery(query),
+                "HELP" => await HandleHelpQuery(query),
                 _ => await HandleRegularAulaQuery(query, contextKey, chatInterface)
             };
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error handling tool-based query");
-            return "❌ I couldn't complete that action. Please try again.";
+            return await GenerateLanguageAwareErrorMessage(query, "action_failed");
+        }
+    }
+
+    private async Task<string> HandleListRemindersQuery(string query)
+    {
+        var reminderList = await _aiToolsManager.ListRemindersAsync();
+
+        // If there's an error from AiToolsManager, return it
+        if (reminderList.StartsWith('❌') || reminderList.StartsWith("No active reminders"))
+        {
+            return await GenerateLanguageAwareResponse(query, reminderList, "reminder_list");
+        }
+
+        // Generate language-appropriate response
+        return await GenerateLanguageAwareResponse(query, reminderList, "reminder_list");
+    }
+
+    private async Task<string> HandleGetCurrentTimeQuery(string query)
+    {
+        var currentTime = _aiToolsManager.GetCurrentDateTime();
+        return await GenerateLanguageAwareResponse(query, currentTime, "current_time");
+    }
+
+    private async Task<string> HandleHelpQuery(string query)
+    {
+        var helpContent = _aiToolsManager.GetHelp();
+        return await GenerateLanguageAwareResponse(query, helpContent, "help");
+    }
+
+    private async Task<string> GenerateLanguageAwareResponse(string originalQuery, string content, string responseType)
+    {
+        var responsePrompt = $@"The user asked: ""{originalQuery}""
+
+I have this information for them:
+{content}
+
+Generate a response in the SAME LANGUAGE as the user's original request. The response type is: {responseType}
+
+Examples:
+- If user wrote in Danish: respond in Danish
+- If user wrote in English: respond in English
+- Keep the same information but present it in the user's language
+- Maintain the same tone and style
+
+Generate the response:";
+
+        try
+        {
+            var chatRequest = new ChatCompletionCreateRequest
+            {
+                Model = _aiModel,
+                Messages = new List<ChatMessage>
+                {
+                    ChatMessage.FromSystem(responsePrompt)
+                },
+                Temperature = 0.3f
+            };
+
+            var response = await _openAiClient.ChatCompletion.CreateCompletion(chatRequest);
+
+            if (response.Successful)
+            {
+                return response.Choices.First().Message.Content ?? content;
+            }
+            else
+            {
+                _logger.LogError("Error generating language-aware response: {Error}", response.Error?.Message);
+                return content;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Exception generating language-aware response");
+            return content;
         }
     }
 
@@ -414,6 +488,9 @@ public class WeekLetterAiService : IWeekLetterAiService
                 var description = ExtractValue(lines, "DESCRIPTION") ?? "Reminder";
                 var dateTimeStr = ExtractValue(lines, "DATETIME") ?? DateTime.Now.AddHours(1).ToString("yyyy-MM-dd HH:mm");
                 var childName = ExtractValue(lines, "CHILD");
+                var isRecurringStr = ExtractValue(lines, "IS_RECURRING") ?? "false";
+                var recurrenceType = ExtractValue(lines, "RECURRENCE_TYPE") ?? "NONE";
+                var dayOfWeekStr = ExtractValue(lines, "DAY_OF_WEEK") ?? "NONE";
 
                 if (!DateTime.TryParseExact(dateTimeStr, "yyyy-MM-dd HH:mm", null, System.Globalization.DateTimeStyles.None, out _))
                 {
@@ -423,17 +500,139 @@ public class WeekLetterAiService : IWeekLetterAiService
 
                 if (childName == "NONE") childName = null;
 
-                return await _aiToolsManager.CreateReminderAsync(description, dateTimeStr, childName);
+                // Check if this is a recurring reminder
+                var isRecurring = bool.TryParse(isRecurringStr, out var recurring) && recurring;
+
+                // Create the reminder using AiToolsManager (for database operations)
+                string creationResult;
+                if (isRecurring && recurrenceType != "NONE" && dayOfWeekStr != "NONE" && int.TryParse(dayOfWeekStr, out var dayOfWeek))
+                {
+                    creationResult = await _aiToolsManager.CreateRecurringReminderAsync(description, dateTimeStr, recurrenceType, dayOfWeek, childName);
+                }
+                else
+                {
+                    creationResult = await _aiToolsManager.CreateReminderAsync(description, dateTimeStr, childName);
+                }
+
+                // Check if reminder creation was successful
+                if (creationResult.StartsWith('❌'))
+                {
+                    // Return error from AiToolsManager
+                    return creationResult;
+                }
+
+                // Generate language-appropriate confirmation response
+                var dayOfWeekForConfirmation = isRecurring && int.TryParse(dayOfWeekStr, out var parsedDayOfWeek) ? parsedDayOfWeek : 0;
+                return await GenerateLanguageAwareConfirmation(query, description, dateTimeStr, childName, isRecurring, recurrenceType, dayOfWeekForConfirmation);
             }
             else
             {
                 _logger.LogError("Error extracting reminder details: {Error}", response.Error?.Message);
-                return "❌ I couldn't understand the reminder details. Please try again with a clearer format.";
+                return await GenerateLanguageAwareErrorMessage(query, "extraction_failed");
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Exception during reminder extraction");
+            return await GenerateLanguageAwareErrorMessage(query, "exception_occurred");
+        }
+    }
+
+    private async Task<string> GenerateLanguageAwareConfirmation(string originalQuery, string description, string dateTime, string? childName, bool isRecurring, string recurrenceType, int dayOfWeek)
+    {
+        var confirmationPrompt = $@"The user made this request: ""{originalQuery}""
+
+I have successfully created a reminder with these details:
+- Description: {description}
+- Date/Time: {dateTime}
+- Child: {(childName ?? "any child")}
+- Is Recurring: {isRecurring}
+- Recurrence Type: {recurrenceType}
+- Day of Week: {dayOfWeek}
+
+Generate a brief, friendly confirmation message in the SAME LANGUAGE as the user's original request. Use an appropriate emoji (like ✅) and keep it concise. Match the tone and language of the original request.
+
+Examples:
+- If user wrote in Danish: respond in Danish
+- If user wrote in English: respond in English
+- Keep it brief and positive
+- Include key details like what was created and when
+
+Generate the confirmation message:";
+
+        try
+        {
+            var chatRequest = new ChatCompletionCreateRequest
+            {
+                Model = _aiModel,
+                Messages = new List<ChatMessage>
+                {
+                    ChatMessage.FromSystem(confirmationPrompt)
+                },
+                Temperature = 0.3f
+            };
+
+            var response = await _openAiClient.ChatCompletion.CreateCompletion(chatRequest);
+
+            if (response.Successful)
+            {
+                return response.Choices.First().Message.Content ?? "✅ Reminder created successfully.";
+            }
+            else
+            {
+                _logger.LogError("Error generating confirmation message: {Error}", response.Error?.Message);
+                return "✅ Reminder created successfully.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Exception generating confirmation message");
+            return "✅ Reminder created successfully.";
+        }
+    }
+
+    private async Task<string> GenerateLanguageAwareErrorMessage(string originalQuery, string errorType)
+    {
+        var errorPrompt = $@"The user made this request: ""{originalQuery}""
+
+I encountered an error while processing their reminder request. The error type is: {errorType}
+
+Generate a brief, helpful error message in the SAME LANGUAGE as the user's original request. Use an appropriate emoji (like ❌) and suggest what they could try instead.
+
+Examples:
+- If user wrote in Danish: respond in Danish
+- If user wrote in English: respond in English
+- Keep it brief and helpful
+- Suggest they try again or be more specific
+
+Generate the error message:";
+
+        try
+        {
+            var chatRequest = new ChatCompletionCreateRequest
+            {
+                Model = _aiModel,
+                Messages = new List<ChatMessage>
+                {
+                    ChatMessage.FromSystem(errorPrompt)
+                },
+                Temperature = 0.3f
+            };
+
+            var response = await _openAiClient.ChatCompletion.CreateCompletion(chatRequest);
+
+            if (response.Successful)
+            {
+                return response.Choices.First().Message.Content ?? "❌ I couldn't understand the reminder details. Please try again with a clearer format.";
+            }
+            else
+            {
+                return "❌ I couldn't understand the reminder details. Please try again with a clearer format.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Exception generating error message");
             return "❌ I couldn't understand the reminder details. Please try again with a clearer format.";
         }
     }
@@ -445,29 +644,129 @@ public class WeekLetterAiService : IWeekLetterAiService
         {
             if (int.TryParse(word, out var reminderNumber))
             {
-                return await _aiToolsManager.DeleteReminderAsync(reminderNumber);
+                var deleteResult = await _aiToolsManager.DeleteReminderAsync(reminderNumber);
+
+                // Check if deletion was successful
+                if (deleteResult.StartsWith('❌'))
+                {
+                    // Return error from AiToolsManager
+                    return deleteResult;
+                }
+
+                // Generate language-appropriate confirmation response
+                return await GenerateLanguageAwareDeletionConfirmation(query, reminderNumber);
             }
         }
 
-        return "❌ Please specify which reminder number to delete (e.g., 'delete reminder 2').";
+        return await GenerateLanguageAwareErrorMessage(query, "no_reminder_number");
     }
 
-    private Task<string> HandleRegularAulaQuery(string query, string contextKey, ChatInterface chatInterface)
+    private async Task<string> GenerateLanguageAwareDeletionConfirmation(string originalQuery, int reminderNumber)
+    {
+        var confirmationPrompt = $@"The user made this request: ""{originalQuery}""
+
+I have successfully deleted reminder number {reminderNumber}.
+
+Generate a brief, friendly confirmation message in the SAME LANGUAGE as the user's original request. Use an appropriate emoji (like ✅) and keep it concise. Match the tone and language of the original request.
+
+Examples:
+- If user wrote in Danish: respond in Danish
+- If user wrote in English: respond in English
+- Keep it brief and positive
+
+Generate the confirmation message:";
+
+        try
+        {
+            var chatRequest = new ChatCompletionCreateRequest
+            {
+                Model = _aiModel,
+                Messages = new List<ChatMessage>
+                {
+                    ChatMessage.FromSystem(confirmationPrompt)
+                },
+                Temperature = 0.3f
+            };
+
+            var response = await _openAiClient.ChatCompletion.CreateCompletion(chatRequest);
+
+            if (response.Successful)
+            {
+                return response.Choices.First().Message.Content ?? "✅ Reminder deleted successfully.";
+            }
+            else
+            {
+                _logger.LogError("Error generating deletion confirmation: {Error}", response.Error?.Message);
+                return "✅ Reminder deleted successfully.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Exception generating deletion confirmation");
+            return "✅ Reminder deleted successfully.";
+        }
+    }
+
+    private async Task<string> HandleRegularAulaQuery(string query, string contextKey, ChatInterface chatInterface)
     {
         var lowerQuery = query.ToLowerInvariant();
 
         if (lowerQuery.Contains("activity") || lowerQuery.Contains("aktivitet"))
         {
-            return Task.FromResult("To ask about activities, try: 'What activities does [child name] have today?' or 'Hvad skal [child name] i dag?'");
+            return await GenerateLanguageAwareHelpMessage(query, "activities");
         }
 
         if (lowerQuery.Contains("remind") || lowerQuery.Contains("mind"))
         {
-            return Task.FromResult("To create reminders, try: 'Remind me to pick up [child] at 3pm tomorrow' or 'Mind mig om at hente [child] kl 15 i morgen'");
+            return await GenerateLanguageAwareHelpMessage(query, "reminders");
         }
 
         _logger.LogInformation("Delegating Aula query to existing system: {Query}", query);
-        return Task.FromResult(FallbackToExistingSystem);
+        return FallbackToExistingSystem;
+    }
+
+    private async Task<string> GenerateLanguageAwareHelpMessage(string originalQuery, string helpType)
+    {
+        var helpPrompt = $@"The user asked: ""{originalQuery}""
+
+They seem to need help with {helpType}. Generate a brief, helpful message in the SAME LANGUAGE as the user's original request that explains how to ask about {helpType}.
+
+Examples:
+- If user wrote in Danish: respond in Danish
+- If user wrote in English: respond in English
+- Keep it brief and helpful
+- Provide example queries they could try
+
+Generate the help message:";
+
+        try
+        {
+            var chatRequest = new ChatCompletionCreateRequest
+            {
+                Model = _aiModel,
+                Messages = new List<ChatMessage>
+                {
+                    ChatMessage.FromSystem(helpPrompt)
+                },
+                Temperature = 0.3f
+            };
+
+            var response = await _openAiClient.ChatCompletion.CreateCompletion(chatRequest);
+
+            if (response.Successful)
+            {
+                return response.Choices.First().Message.Content ?? "I can help you with that. Please try asking in a different way.";
+            }
+            else
+            {
+                return "I can help you with that. Please try asking in a different way.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Exception generating help message");
+            return "I can help you with that. Please try asking in a different way.";
+        }
     }
 
     private static string? ExtractValue(string[] lines, string prefix)

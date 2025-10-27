@@ -16,6 +16,7 @@ namespace MinUddannelse.Tests.Tools;
 public class AiToolsManagerTests
 {
     private readonly Mock<IReminderRepository> _mockReminderRepository;
+    private readonly Mock<IScheduledTaskRepository> _mockScheduledTaskRepository;
     private readonly Mock<WeekLetterCache> _mockDataManager;
     private readonly ILoggerFactory _loggerFactory;
     private readonly AiToolsManager _aiToolsManager;
@@ -25,6 +26,7 @@ public class AiToolsManagerTests
     public AiToolsManagerTests()
     {
         _mockReminderRepository = new Mock<IReminderRepository>();
+        _mockScheduledTaskRepository = new Mock<IScheduledTaskRepository>();
         _loggerFactory = new LoggerFactory();
 
         _testChildren = new List<Child>
@@ -44,7 +46,7 @@ public class AiToolsManagerTests
         var mockCache = new Mock<IMemoryCache>();
         _mockDataManager = new Mock<WeekLetterCache>(mockCache.Object, _config, _loggerFactory);
 
-        _aiToolsManager = new AiToolsManager(_mockReminderRepository.Object, _mockDataManager.Object, _config, _loggerFactory);
+        _aiToolsManager = new AiToolsManager(_mockReminderRepository.Object, _mockScheduledTaskRepository.Object, _mockDataManager.Object, _config, _loggerFactory);
     }
 
     [Fact]

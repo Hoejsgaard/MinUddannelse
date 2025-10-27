@@ -37,8 +37,25 @@ After build, verify the executable exists:
 ls -la /mnt/d/git/MinUddannelse/src/MinUddannelse/bin/Release/net9.0/win-x64/publish/MinUddannelse.exe
 ```
 
+## Deployment
+
+**For production deployment:**
+
+Copy the executable to the production directory. That's it.
+
+```bash
+cp /mnt/d/git/MinUddannelse/src/MinUddannelse/bin/Release/net9.0/win-x64/publish/MinUddannelse.exe /path/to/production/
+```
+
+**Production deployment structure:**
+```
+production-directory/
+└── MinUddannelse.exe
+```
+
 ## Notes
 
 - Always build from the project directory (`/mnt/d/git/MinUddannelse/src/MinUddannelse`)
-- The self-contained executable is ~100MB+ because it includes the .NET runtime
-- Copy `appsettings.json` to the same directory as the executable for production deployment
+- The self-contained executable is ~84MB because it includes the .NET runtime
+- Configuration files are embedded in the executable - no external config files needed
+- No .NET installation required on target machine

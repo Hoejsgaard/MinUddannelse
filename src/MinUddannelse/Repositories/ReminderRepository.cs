@@ -66,6 +66,7 @@ public class ReminderRepository : IReminderRepository
 
         var pendingReminders = reminders.Models
             .Where(r => r.RemindDate < currentDate || (r.RemindDate == currentDate && r.RemindTime <= currentTime))
+            .Where(r => r.RemindDate != new DateOnly(1900, 1, 1)) // Exclude template reminders
             .OrderBy(r => r.RemindDate)
             .ThenBy(r => r.RemindTime)
             .ToList();
@@ -110,6 +111,30 @@ public class ReminderRepository : IReminderRepository
             .Get();
 
         return reminders.Models;
+    }
+
+    public async Task<Reminder?> GetReminderByIdAsync(int reminderId)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(reminderId, 0);
+
+        var result = await _supabase
+            .From<Reminder>()
+            .Select("*")
+            .Where(r => r.Id == reminderId)
+            .Get();
+
+        var reminder = result.Models.FirstOrDefault();
+
+        if (reminder != null)
+        {
+            _logger.LogInformation("Retrieved reminder {ReminderId}: {Text}", reminderId, reminder.Text);
+        }
+        else
+        {
+            _logger.LogWarning("Reminder {ReminderId} not found", reminderId);
+        }
+
+        return reminder;
     }
 
     public async Task DeleteReminderAsync(int reminderId)

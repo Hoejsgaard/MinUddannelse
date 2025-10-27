@@ -46,7 +46,7 @@ public class OpenAiServiceIntegrationTests
 
         _mockLoggerFactory.Setup(f => f.CreateLogger(It.IsAny<string>())).Returns(_mockLogger.Object);
 
-        _aiToolsManager = new AiToolsManager(_mockReminderRepository.Object, _mockWeekLetterCache.Object, _config, _mockLoggerFactory.Object);
+        _aiToolsManager = new AiToolsManager(_mockReminderRepository.Object, new Mock<IScheduledTaskRepository>().Object, _mockWeekLetterCache.Object, _config, _mockLoggerFactory.Object);
     }
 
     [Fact]
