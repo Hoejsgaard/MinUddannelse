@@ -11,13 +11,15 @@ namespace MinUddannelse.AI.Services;
 public class AiToolsManager : IAiToolsManager
 {
     private readonly IReminderRepository _reminderRepository;
+    private readonly IScheduledTaskRepository _scheduledTaskRepository;
     private readonly WeekLetterCache _dataService;
     private readonly Config _config;
     private readonly ILogger _logger;
 
-    public AiToolsManager(IReminderRepository reminderRepository, WeekLetterCache dataService, Config config, ILoggerFactory loggerFactory)
+    public AiToolsManager(IReminderRepository reminderRepository, IScheduledTaskRepository scheduledTaskRepository, WeekLetterCache dataService, Config config, ILoggerFactory loggerFactory)
     {
         _reminderRepository = reminderRepository;
+        _scheduledTaskRepository = scheduledTaskRepository;
         _dataService = dataService;
         _config = config;
         _logger = loggerFactory.CreateLogger<AiToolsManager>();
@@ -47,6 +49,100 @@ public class AiToolsManager : IAiToolsManager
             _logger.LogError(ex, "Failed to create reminder");
             return "❌ Failed to create reminder. Please try again.";
         }
+    }
+
+    public async Task<string> CreateRecurringReminderAsync(string description, string dateTime, string recurrenceType, int dayOfWeek, string? childName = null)
+    {
+        try
+        {
+            TimeOnly time;
+
+            // For recurring reminders, use DefaultOnDateReminderTime if no specific time is provided
+            // Check if dateTime is null/empty or if it parses to midnight (00:00)
+            if (string.IsNullOrWhiteSpace(dateTime) ||
+                !DateTime.TryParse(dateTime, out var parsedDateTime) ||
+                (parsedDateTime.Hour == 0 && parsedDateTime.Minute == 0))
+            {
+                // Use the default reminder time from configuration
+                if (TimeOnly.TryParse(_config.Scheduling.DefaultOnDateReminderTime, out var defaultTime))
+                {
+                    time = defaultTime;
+                    _logger.LogInformation("Using default reminder time {DefaultTime} for recurring reminder (dateTime: '{DateTime}')", time, dateTime);
+                }
+                else
+                {
+                    time = new TimeOnly(6, 45); // Fallback to 06:45 if config is invalid
+                    _logger.LogWarning("Could not parse DefaultOnDateReminderTime, using fallback 06:45 (dateTime: '{DateTime}')", dateTime);
+                }
+            }
+            else
+            {
+                time = TimeOnly.FromDateTime(parsedDateTime);
+                _logger.LogInformation("Using parsed time {Time} from dateTime: '{DateTime}'", time, dateTime);
+            }
+
+            // Create template reminder with magic date 1900-01-01
+            var templateDate = new DateOnly(1900, 1, 1);
+
+            var templateReminderId = await _reminderRepository.AddReminderAsync(description, templateDate, time, childName);
+
+            // Generate cron expression based on recurrence
+            var cronExpression = GenerateCronExpression(recurrenceType, dayOfWeek, time);
+
+            // Create scheduled task for the recurring reminder
+            var taskName = $"recurring_reminder_{templateReminderId}";
+            var taskDescription = $"Recurring reminder: {description} for {childName ?? "any child"}";
+
+            var scheduledTask = new ScheduledTask
+            {
+                Name = taskName,
+                Description = taskDescription,
+                CronExpression = cronExpression,
+                TaskType = "reminder",
+                ReminderId = templateReminderId,
+                Enabled = true
+            };
+
+            await _scheduledTaskRepository.AddScheduledTaskAsync(scheduledTask);
+
+            var recurrenceDesc = recurrenceType == "weekly" ? GetDayName(dayOfWeek) : recurrenceType;
+            var childInfo = string.IsNullOrEmpty(childName) ? "" : $" for {childName}";
+
+            _logger.LogInformation("Created recurring reminder: {Description} every {Recurrence} at {Time}{ChildInfo}",
+                description, recurrenceDesc, time, childInfo);
+
+            return $"✅ Recurring reminder created: '{description}' every {recurrenceDesc} at {time:HH:mm}{childInfo}";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to create recurring reminder");
+            return "❌ Failed to create recurring reminder. Please try again.";
+        }
+    }
+
+    private string GenerateCronExpression(string recurrenceType, int dayOfWeek, TimeOnly time)
+    {
+        return recurrenceType switch
+        {
+            "daily" => $"{time.Minute} {time.Hour} * * *",
+            "weekly" => $"{time.Minute} {time.Hour} * * {dayOfWeek}",
+            _ => throw new ArgumentException($"Unsupported recurrence type: {recurrenceType}")
+        };
+    }
+
+    private string GetDayName(int dayOfWeek)
+    {
+        return dayOfWeek switch
+        {
+            0 => "Sunday",
+            1 => "Monday",
+            2 => "Tuesday",
+            3 => "Wednesday",
+            4 => "Thursday",
+            5 => "Friday",
+            6 => "Saturday",
+            _ => "Unknown"
+        };
     }
 
     public async Task<string> ListRemindersAsync(string? childName = null)

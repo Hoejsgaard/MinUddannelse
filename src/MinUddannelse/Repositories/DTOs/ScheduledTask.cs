@@ -33,6 +33,12 @@ public class ScheduledTask : BaseModel
     [Column("next_run")]
     public DateTime? NextRun { get; set; }
 
+    [Column("task_type")]
+    public string TaskType { get; set; } = "hardcoded";
+
+    [Column("reminder_id")]
+    public int? ReminderId { get; set; }
+
     [Column("created_at")]
     public DateTime CreatedAt { get; set; }
 
