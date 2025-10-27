@@ -30,84 +30,13 @@ public class OpenAiService : IOpenAiService
 
         _logger.LogInformation("Getting AI response for child {ChildName}: {Query}", child.FirstName, query);
 
-        if (IsWeekLetterQuery(query))
-        {
-            _logger.LogInformation("Detected week letter query for {ChildName}, processing with week letter data", child.FirstName);
-            return await ProcessWeekLetterQuery(child, query);
-        }
-
+        // Let the AI intent analysis system handle all routing decisions
         var contextualQuery = $"[Context: Child {child.FirstName}] {query}";
         return await _openAiService.ProcessQueryWithToolsAsync(contextualQuery,
             $"child_{child.FirstName}",
             ChatInterface.Slack);
     }
 
-    private bool IsWeekLetterQuery(string query)
-    {
-        if (string.IsNullOrEmpty(query)) return false;
-
-        var lowerQuery = query.ToLowerInvariant();
-
-        var weekLetterIndicators = new[]
-        {
-            "mandag", "tirsdag", "onsdag", "torsdag", "fredag", "lørdag", "søndag",
-            "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
-            "hvad skal", "what should", "hvilken dag", "what day", "på", "on",
-            "denne uge", "this week", "ugebrev", "week letter"
-        };
-
-        return weekLetterIndicators.Any(indicator => lowerQuery.Contains(indicator));
-    }
-
-    private async Task<string?> ProcessWeekLetterQuery(Child child, string query)
-    {
-        try
-        {
-            var currentDate = DateOnly.FromDateTime(DateTime.Now);
-            var weekLetter = await _weekLetterService.GetOrFetchWeekLetterAsync(child, currentDate);
-
-            if (weekLetter == null)
-            {
-                _logger.LogWarning("No week letter available for {ChildName} for current week", child.FirstName);
-                return "Jeg kan ikke finde ugekrevset for denne uge.";
-            }
-
-            var content = weekLetter["ugebreve"]?[0]?["indhold"]?.ToString() ?? "";
-            if (string.IsNullOrEmpty(content))
-            {
-                _logger.LogWarning("Week letter content is empty for {ChildName}", child.FirstName);
-                return "Ugebrevet er tomt denne uge.";
-            }
-
-            _logger.LogInformation("Processing week letter query for {ChildName}, content length: {Length} characters",
-                child.FirstName, content.Length);
-
-            var contextualQuery = $@"Du er en hjælpsom assistent for {child.FirstName}.
-
-Her er ugebrevet for denne uge:
-{content}
-
-Spørgsmål: {query}
-
-Svar venligst kort og præcist på spørgsmålet baseret på information fra ugebrevet. Svar på dansk.";
-
-            var response = await _openAiService.ProcessDirectQueryAsync(contextualQuery, ChatInterface.Slack);
-
-            if (string.IsNullOrEmpty(response) || response == "FALLBACK_TO_EXISTING_SYSTEM")
-            {
-                _logger.LogError("Failed to get valid response from OpenAI service for week letter query for {ChildName}", child.FirstName);
-                return "Jeg kunne ikke finde svaret i ugebrevet.";
-            }
-
-            _logger.LogInformation("Successfully processed week letter query for {ChildName}", child.FirstName);
-            return response;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error processing week letter query for {ChildName}", child.FirstName);
-            return "Der opstod en fejl ved behandling af dit spørgsmål om ugebrevet.";
-        }
-    }
 
     public async Task<string?> GetResponseWithContextAsync(Child child, string query, string conversationId)
     {
