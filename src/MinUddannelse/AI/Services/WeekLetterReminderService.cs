@@ -79,7 +79,7 @@ public class WeekLetterReminderService : IWeekLetterReminderService
                 return new ReminderExtractionResult { Success = true, RemindersCreated = 0, NoRemindersFound = true };
             }
 
-            var extractedEvents = await ExtractEventsFromWeekLetterAsync(weekLetterContent);
+            var extractedEvents = await ExtractEventsFromWeekLetterAsync(weekLetterContent, weekNumber, year);
 
             if (!extractedEvents.Any())
             {
@@ -183,11 +183,13 @@ public class WeekLetterReminderService : IWeekLetterReminderService
         }
     }
 
-    private async Task<List<ExtractedEvent>> ExtractEventsFromWeekLetterAsync(string weekLetterContent)
+    private async Task<List<ExtractedEvent>> ExtractEventsFromWeekLetterAsync(string weekLetterContent, int weekNumber, int year)
     {
         try
         {
-            var prompt = ReminderExtractionPrompts.GetWeekLetterEventExtractionPrompt(weekLetterContent, DateTime.Now);
+            // Convert the week number to the Monday of that week for proper date context
+            var weekMonday = ISOWeek.ToDateTime(year, weekNumber, DayOfWeek.Monday);
+            var prompt = ReminderExtractionPrompts.GetWeekLetterEventExtractionPrompt(weekLetterContent, weekMonday);
 
             var completionResult = await _openAiClient.CreateCompletionAsync(prompt, _aiModel);
 
