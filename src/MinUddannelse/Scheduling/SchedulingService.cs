@@ -88,10 +88,11 @@ public class SchedulingService : ISchedulingService
             try
             {
                 await CheckForMissedReminders();
+                await CheckForMissedScheduledTasks();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error checking for missed reminders on startup");
+                _logger.LogError(ex, "Error checking for missed reminders/tasks on startup");
             }
         });
 
@@ -762,6 +763,86 @@ public class SchedulingService : ISchedulingService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error checking for missed reminders");
+        }
+    }
+
+    private async Task CheckForMissedScheduledTasks()
+    {
+        try
+        {
+            _logger.LogInformation("Checking for missed scheduled tasks on startup");
+
+            var tasks = await _scheduledTaskRepository.GetScheduledTasksAsync();
+            var now = DateTime.UtcNow;
+            var missedTasks = new List<ScheduledTask>();
+
+            foreach (var task in tasks)
+            {
+                if (!task.Enabled)
+                    continue;
+
+                try
+                {
+                    DateTime nextRun;
+
+                    if (task.NextRun.HasValue)
+                    {
+                        nextRun = task.NextRun.Value;
+                    }
+                    else
+                    {
+                        var schedule = CrontabSchedule.Parse(task.CronExpression);
+                        nextRun = task.LastRun != null
+                            ? schedule.GetNextOccurrence(task.LastRun.Value)
+                            : schedule.GetNextOccurrence(now.AddMinutes(-_config.Scheduling.InitialOccurrenceOffsetMinutes));
+                    }
+
+                    // Check if we missed this task (NextRun is in the past and we haven't run it yet)
+                    if (now > nextRun && (task.LastRun == null || task.LastRun < nextRun))
+                    {
+                        var missedBy = now - nextRun;
+                        _logger.LogWarning("Found missed scheduled task: {TaskName}, was scheduled for {NextRun} ({MissedMinutes} minutes ago)",
+                            task.Name, nextRun, missedBy.TotalMinutes);
+                        missedTasks.Add(task);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error checking if task {TaskName} was missed", task.Name);
+                }
+            }
+
+            if (missedTasks.Count > 0)
+            {
+                _logger.LogInformation("Executing {Count} missed scheduled tasks", missedTasks.Count);
+
+                foreach (var task in missedTasks)
+                {
+                    try
+                    {
+                        _logger.LogInformation("Executing missed scheduled task: {TaskName}", task.Name);
+
+                        task.LastRun = now;
+                        task.NextRun = GetNextRunTime(task.CronExpression, now);
+                        await _scheduledTaskRepository.UpdateScheduledTaskAsync(task);
+                        await ExecuteTask(task);
+
+                        _logger.LogInformation("Successfully executed missed task: {TaskName}", task.Name);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error executing missed scheduled task: {TaskName}", task.Name);
+                    }
+                }
+            }
+            else
+            {
+                _logger.LogInformation("No missed scheduled tasks found on startup");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error checking for missed scheduled tasks");
         }
     }
 
