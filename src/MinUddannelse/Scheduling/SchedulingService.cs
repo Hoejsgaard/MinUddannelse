@@ -155,7 +155,7 @@ public class SchedulingService : ISchedulingService
                 _logger.LogInformation("Running scheduled tasks check at {Time}", DateTime.Now);
 
                 var tasks = await _scheduledTaskRepository.GetScheduledTasksAsync();
-                var now = DateTime.UtcNow;
+                var now = DateTime.Now;
 
                 foreach (var task in tasks)
                 {
@@ -364,25 +364,18 @@ public class SchedulingService : ISchedulingService
 
     private void SendReminderNotification(Reminder reminder)
     {
-        try
+        if (string.IsNullOrEmpty(reminder.ChildName))
         {
-            if (string.IsNullOrEmpty(reminder.ChildName))
-            {
-                _logger.LogWarning("Reminder {ReminderId} has no child name - skipping (all reminders should be child-specific)", reminder.Id);
-                return;
-            }
-
-            var childId = Configuration.Child.GenerateChildId(reminder.ChildName);
-            var eventArgs = new ChildReminderEventArgs(childId, reminder.ChildName, reminder);
-            ReminderReady?.Invoke(this, eventArgs);
-
-            _logger.LogInformation("Fired reminder event {ReminderId} for {ChildName}",
-                reminder.Id, reminder.ChildName);
+            _logger.LogError("Reminder {ReminderId} has no child name - cannot send (all reminders must be child-specific)", reminder.Id);
+            throw new InvalidOperationException($"Reminder {reminder.Id} has no child name and cannot be sent");
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to send reminder {ReminderId}", reminder.Id);
-        }
+
+        var childId = Configuration.Child.GenerateChildId(reminder.ChildName);
+        var eventArgs = new ChildReminderEventArgs(childId, reminder.ChildName, reminder);
+        ReminderReady?.Invoke(this, eventArgs);
+
+        _logger.LogInformation("Fired reminder event {ReminderId} for {ChildName}",
+            reminder.Id, reminder.ChildName);
     }
 
     private async Task ExecuteWeeklyLetterCheck(ScheduledTask task)
@@ -773,7 +766,7 @@ public class SchedulingService : ISchedulingService
             _logger.LogInformation("Checking for missed scheduled tasks on startup");
 
             var tasks = await _scheduledTaskRepository.GetScheduledTasksAsync();
-            var now = DateTime.UtcNow;
+            var now = DateTime.Now;
             var missedTasks = new List<ScheduledTask>();
 
             foreach (var task in tasks)
