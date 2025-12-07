@@ -166,7 +166,7 @@ public class SchedulingService : ISchedulingService
                             _logger.LogInformation("Executing scheduled task: {TaskName}", task.Name);
 
                             task.LastRun = now;
-                            task.NextRun = GetNextRunTime(task.CronExpression, now);
+                            task.NextRun = GetNextRunTime(task.CronExpression, now.AddMinutes(2));
                             await _scheduledTaskRepository.UpdateScheduledTaskAsync(task);
                             await ExecuteTask(task);
                         }
@@ -816,7 +816,7 @@ public class SchedulingService : ISchedulingService
                         _logger.LogInformation("Executing missed scheduled task: {TaskName}", task.Name);
 
                         task.LastRun = now;
-                        task.NextRun = GetNextRunTime(task.CronExpression, now);
+                        task.NextRun = GetNextRunTime(task.CronExpression, now.AddMinutes(2));
                         await _scheduledTaskRepository.UpdateScheduledTaskAsync(task);
                         await ExecuteTask(task);
 
