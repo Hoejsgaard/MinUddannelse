@@ -9,20 +9,30 @@ public static class ReminderExtractionPrompts
     public static string GetExtractionPrompt(string query, DateTime currentTime)
     {
         var nextMonday = GetNextWeekday(currentTime, DayOfWeek.Monday);
+        var nextTuesday = GetNextWeekday(currentTime, DayOfWeek.Tuesday);
+        var nextWednesday = GetNextWeekday(currentTime, DayOfWeek.Wednesday);
+        var nextThursday = GetNextWeekday(currentTime, DayOfWeek.Thursday);
+        var nextFriday = GetNextWeekday(currentTime, DayOfWeek.Friday);
+        var nextSaturday = GetNextWeekday(currentTime, DayOfWeek.Saturday);
+        var nextSunday = GetNextWeekday(currentTime, DayOfWeek.Sunday);
 
         return $@"Extract reminder details from this natural language request:
 
 Query: ""{query}""
 
+CHILD NAME EXTRACTION:
+If the query starts with ""[Context: Child X]"", extract X as the child name.
+Example: ""[Context: Child Hans]"" means CHILD: Hans
+
 Extract:
 1. Description: What to remind about
 2. DateTime: When to remind (convert to yyyy-MM-dd HH:mm format)
-3. ChildName: If mentioned, the child's name (optional)
+3. ChildName: Extract from [Context: Child X] prefix, or if explicitly mentioned in query
 4. IsRecurring: Whether this is a recurring reminder
 5. RecurrenceType: daily, weekly, monthly (if recurring)
 6. DayOfWeek: 0=Sunday, 1=Monday, etc. (for weekly recurrence)
 
-RECURRING PATTERN DETECTION:
+RECURRING PATTERN DETECTION (ONLY these patterns mean recurring):
 Danish patterns for recurring reminders:
 - ""hver dag"" / ""dagligt"" = daily recurring
 - ""hver mandag"" / ""hver mandag morgen"" = weekly recurring (Monday)
@@ -38,14 +48,24 @@ English patterns:
 - ""every Monday"" / ""every Monday morning"" = weekly recurring (Monday)
 - ""weekly"" = weekly recurring (use day from datetime)
 
-For relative dates (current time is {currentTime:yyyy-MM-dd HH:mm}):
-- ""tomorrow"" = {currentTime.Date.AddDays(1):yyyy-MM-dd}
-- ""today"" = {currentTime.Date:yyyy-MM-dd}
-- ""next Monday"" = {nextMonday:yyyy-MM-dd}
-- ""mandag"" (without ""hver"") = {nextMonday:yyyy-MM-dd}
-- ""in 2 hours"" = {currentTime.AddHours(2):yyyy-MM-dd HH:mm}
+ONE-TIME REMINDERS (NOT recurring - these are for THIS/NEXT occurrence only):
+Current time is {currentTime:yyyy-MM-dd HH:mm}
+- ""tomorrow"" / ""i morgen"" = {currentTime.Date.AddDays(1):yyyy-MM-dd}
+- ""today"" / ""i dag"" = {currentTime.Date:yyyy-MM-dd}
+- ""mandag"" (without ""hver"") = {nextMonday:yyyy-MM-dd} (one-time, NOT recurring)
+- ""tirsdag"" (without ""hver"") = {nextTuesday:yyyy-MM-dd} (one-time, NOT recurring)
+- ""onsdag"" (without ""hver"") = {nextWednesday:yyyy-MM-dd} (one-time, NOT recurring)
+- ""torsdag"" (without ""hver"") = {nextThursday:yyyy-MM-dd} (one-time, NOT recurring)
+- ""fredag"" (without ""hver"") = {nextFriday:yyyy-MM-dd} (one-time, NOT recurring)
+- ""lørdag"" (without ""hver"") = {nextSaturday:yyyy-MM-dd} (one-time, NOT recurring)
+- ""søndag"" (without ""hver"") = {nextSunday:yyyy-MM-dd} (one-time, NOT recurring)
+- ""next Monday"" = {nextMonday:yyyy-MM-dd} (one-time)
+- ""in 2 hours"" / ""om 2 timer"" = {currentTime.AddHours(2):yyyy-MM-dd HH:mm}
 - ""om 2 minutter"" = {currentTime.AddMinutes(2):yyyy-MM-dd HH:mm}
 - ""om 30 minutter"" = {currentTime.AddMinutes(30):yyyy-MM-dd HH:mm}
+
+IMPORTANT: A day name without ""hver""/""every"" is a ONE-TIME reminder for the next occurrence of that day.
+""fredag: ingen idrætstøj"" = one-time reminder for {nextFriday:yyyy-MM-dd}, NOT recurring.
 
 For recurring reminders:
 - Use the NEXT occurrence of the specified day/time as the DateTime

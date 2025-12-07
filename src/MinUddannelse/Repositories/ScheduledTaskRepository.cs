@@ -50,14 +50,17 @@ public class ScheduledTaskRepository : IScheduledTaskRepository
         ArgumentException.ThrowIfNullOrWhiteSpace(task.Name);
         ArgumentException.ThrowIfNullOrWhiteSpace(task.CronExpression);
 
-        task.CreatedAt = DateTime.UtcNow;
-        task.UpdatedAt = DateTime.UtcNow;
+        // Use local time consistently throughout the scheduling system to avoid timezone conversion issues
+        // The SchedulingService uses DateTime.Now for all time comparisons and updates
+        var now = DateTime.Now;
+        task.CreatedAt = now;
+        task.UpdatedAt = now;
 
         // Initialize LastRun to current time to prevent immediate execution
         // This ensures new scheduled tasks don't fire immediately upon creation
         if (task.LastRun == null)
         {
-            task.LastRun = DateTime.UtcNow;
+            task.LastRun = now;
             _logger.LogInformation("Initialized LastRun to {LastRun} for new scheduled task: {TaskName}", task.LastRun, task.Name);
         }
 
@@ -77,10 +80,11 @@ public class ScheduledTaskRepository : IScheduledTaskRepository
 
     public async Task UpdateScheduledTaskAsync(ScheduledTask task)
     {
-        task.UpdatedAt = DateTime.UtcNow;
+        task.UpdatedAt = DateTime.Now;
 
         await _supabase
             .From<ScheduledTask>()
+            .Where(t => t.Id == task.Id)
             .Update(task);
 
         _logger.LogInformation("Updated scheduled task: {TaskName}", task.Name);

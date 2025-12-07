@@ -199,4 +199,30 @@ public class ReminderRepository : IReminderRepository
 
         _logger.LogInformation("Deleted auto-extracted reminders for week letter {WeekLetterId}", weekLetterId);
     }
+
+    public async Task<bool> ReminderExistsForDateAsync(string text, DateOnly date, TimeOnly time, string? childName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(text);
+
+        // Filter by text in the query to reduce data transfer
+        // DateOnly/TimeOnly and nullable childName comparisons are done in memory
+        var reminders = await _supabase
+            .From<Reminder>()
+            .Select("*")
+            .Where(r => r.Text == text)
+            .Get();
+
+        var exists = reminders.Models.Any(r =>
+            r.RemindDate == date &&
+            r.RemindTime == time &&
+            r.ChildName == childName);
+
+        if (exists)
+        {
+            _logger.LogInformation("Reminder already exists for {Date} {Time}: {Text} ({ChildName})",
+                date, time, text, childName ?? "any");
+        }
+
+        return exists;
+    }
 }

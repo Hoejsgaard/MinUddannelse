@@ -17,4 +17,5 @@ public interface IReminderRepository
     Task<Reminder?> GetReminderByIdAsync(int reminderId);
     Task DeleteReminderAsync(int reminderId);
     Task DeleteAutoExtractedRemindersByWeekLetterIdAsync(int weekLetterId);
+    Task<bool> ReminderExistsForDateAsync(string text, DateOnly date, TimeOnly time, string? childName);
 }

@@ -47,7 +47,9 @@ public class OpenAiService : IOpenAiService
 
         var childConversationId = $"{child.FirstName}_{conversationId}";
 
-        return await _openAiService.ProcessQueryWithToolsAsync(query,
+        // Include child context so reminder extraction knows which child the reminder is for
+        var contextualQuery = $"[Context: Child {child.FirstName}] {query}";
+        return await _openAiService.ProcessQueryWithToolsAsync(contextualQuery,
             childConversationId,
             ChatInterface.Slack);
     }
