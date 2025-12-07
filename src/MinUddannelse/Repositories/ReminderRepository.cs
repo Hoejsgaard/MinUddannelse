@@ -53,7 +53,7 @@ public class ReminderRepository : IReminderRepository
 
     public async Task<List<Reminder>> GetPendingRemindersAsync()
     {
-        var now = DateTime.Now;
+        var now = DateTime.UtcNow;
         var currentDate = DateOnly.FromDateTime(now);
         var currentTime = TimeOnly.FromDateTime(now);
 

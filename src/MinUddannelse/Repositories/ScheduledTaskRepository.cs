@@ -50,9 +50,8 @@ public class ScheduledTaskRepository : IScheduledTaskRepository
         ArgumentException.ThrowIfNullOrWhiteSpace(task.Name);
         ArgumentException.ThrowIfNullOrWhiteSpace(task.CronExpression);
 
-        // Use local time consistently throughout the scheduling system to avoid timezone conversion issues
-        // The SchedulingService uses DateTime.Now for all time comparisons and updates
-        var now = DateTime.Now;
+        // Use UTC time consistently - Supabase stores DateTime as UTC
+        var now = DateTime.UtcNow;
         task.CreatedAt = now;
         task.UpdatedAt = now;
 
@@ -80,7 +79,7 @@ public class ScheduledTaskRepository : IScheduledTaskRepository
 
     public async Task UpdateScheduledTaskAsync(ScheduledTask task)
     {
-        task.UpdatedAt = DateTime.Now;
+        task.UpdatedAt = DateTime.UtcNow;
 
         await _supabase
             .From<ScheduledTask>()

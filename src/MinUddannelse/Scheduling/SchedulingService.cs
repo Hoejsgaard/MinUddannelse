@@ -123,7 +123,7 @@ public class SchedulingService : ISchedulingService
 
     private void CheckScheduledTasksWrapper(object? state)
     {
-        _logger.LogInformation("TIMER FIRED - CheckScheduledTasksWrapper called at {Time}", DateTime.Now);
+        _logger.LogInformation("TIMER FIRED - CheckScheduledTasksWrapper called at {UtcTime} UTC", DateTime.UtcNow);
 
         _ = Task.Run(async () =>
         {
@@ -144,18 +144,18 @@ public class SchedulingService : ISchedulingService
 
         try
         {
-            _logger.LogInformation("Timer fired: Checking scheduled tasks and reminders at {LocalTime} (UTC: {UtcTime})", DateTime.Now, DateTime.UtcNow);
+            _logger.LogInformation("Timer fired: Checking scheduled tasks and reminders at {UtcTime} UTC", DateTime.UtcNow);
 
             await ExecutePendingReminders();
             await ExecutePendingRetries();
 
-            var currentSecond = DateTime.Now.Second;
+            var currentSecond = DateTime.UtcNow.Second;
             if (currentSecond < SchedulingWindowSeconds)
             {
-                _logger.LogInformation("Running scheduled tasks check at {Time}", DateTime.Now);
+                _logger.LogInformation("Running scheduled tasks check at {UtcTime} UTC", DateTime.UtcNow);
 
                 var tasks = await _scheduledTaskRepository.GetScheduledTasksAsync();
-                var now = DateTime.Now;
+                var now = DateTime.UtcNow;
 
                 foreach (var task in tasks)
                 {
@@ -184,10 +184,10 @@ public class SchedulingService : ISchedulingService
         }
     }
 
-    private bool ShouldRunTask(ScheduledTask task, DateTime now)
+    private bool ShouldRunTask(ScheduledTask task, DateTime utcNow)
     {
-        _logger.LogInformation("ShouldRunTask check for {TaskName}: Enabled={Enabled}, LastRun={LastRun}, NextRun={NextRun}, Now={Now}",
-            task.Name, task.Enabled, task.LastRun, task.NextRun, now);
+        _logger.LogInformation("ShouldRunTask check for {TaskName}: Enabled={Enabled}, LastRun={LastRun}, NextRun={NextRun}, UtcNow={UtcNow}",
+            task.Name, task.Enabled, task.LastRun, task.NextRun, utcNow);
 
         if (!task.Enabled)
         {
@@ -209,16 +209,16 @@ public class SchedulingService : ISchedulingService
                 var schedule = CrontabSchedule.Parse(task.CronExpression);
                 nextRun = task.LastRun != null
                     ? schedule.GetNextOccurrence(task.LastRun.Value)
-                    : schedule.GetNextOccurrence(now.AddMinutes(-_config.Scheduling.InitialOccurrenceOffsetMinutes));
+                    : schedule.GetNextOccurrence(utcNow.AddMinutes(-_config.Scheduling.InitialOccurrenceOffsetMinutes));
                 _logger.LogInformation("Task {TaskName} calculated NextRun from cron: {NextRun}", task.Name, nextRun);
             }
 
-            _logger.LogInformation("Task {TaskName} cron analysis: CronExpression={CronExpression}, FinalNextRun={FinalNextRun}, Now={Now}, WindowMinutes={WindowMinutes}",
-                task.Name, task.CronExpression, nextRun, now, _config.Scheduling.TaskExecutionWindowMinutes);
+            _logger.LogInformation("Task {TaskName} cron analysis: CronExpression={CronExpression}, FinalNextRun={FinalNextRun}, UtcNow={UtcNow}, WindowMinutes={WindowMinutes}",
+                task.Name, task.CronExpression, nextRun, utcNow, _config.Scheduling.TaskExecutionWindowMinutes);
 
-            var shouldRun = now >= nextRun && now <= nextRun.AddMinutes(_config.Scheduling.TaskExecutionWindowMinutes);
-            _logger.LogInformation("Task {TaskName} should run: {ShouldRun} (now >= nextRun: {IsAfterNext}, now <= window: {IsInWindow})",
-                task.Name, shouldRun, now >= nextRun, now <= nextRun.AddMinutes(_config.Scheduling.TaskExecutionWindowMinutes));
+            var shouldRun = utcNow >= nextRun && utcNow <= nextRun.AddMinutes(_config.Scheduling.TaskExecutionWindowMinutes);
+            _logger.LogInformation("Task {TaskName} should run: {ShouldRun} (utcNow >= nextRun: {IsAfterNext}, utcNow <= window: {IsInWindow})",
+                task.Name, shouldRun, utcNow >= nextRun, utcNow <= nextRun.AddMinutes(_config.Scheduling.TaskExecutionWindowMinutes));
 
             return shouldRun;
         }
@@ -293,8 +293,8 @@ public class SchedulingService : ISchedulingService
                 return;
             }
 
-            // Create actual reminder for today using the template
-            var today = DateOnly.FromDateTime(DateTime.Now);
+            // Create actual reminder for today using the template (UTC for database consistency)
+            var today = DateOnly.FromDateTime(DateTime.UtcNow);
             var reminderTime = templateReminder.RemindTime;
 
             var newReminderId = await _reminderRepository.AddReminderAsync(
@@ -316,7 +316,7 @@ public class SchedulingService : ISchedulingService
     {
         try
         {
-            _logger.LogInformation("ExecutePendingReminders called at {LocalTime} (UTC: {UtcTime})", DateTime.Now, DateTime.UtcNow);
+            _logger.LogInformation("ExecutePendingReminders called at {UtcTime} UTC", DateTime.UtcNow);
 
             var pendingReminders = await _reminderRepository.GetPendingRemindersAsync();
 
@@ -413,6 +413,7 @@ public class SchedulingService : ISchedulingService
     {
         var (weekNumber, year) = GetCurrentWeekAndYear();
 
+        // Use local time for Sunday check - relates to Danish school calendar context
         if (DateTime.Now.DayOfWeek == DayOfWeek.Sunday)
         {
             var nextWeek = DateTime.Now.AddDays(7);
@@ -507,8 +508,9 @@ public class SchedulingService : ISchedulingService
 
     private static (int weekNumber, int year) GetCurrentWeekAndYear()
     {
-        var now = DateTime.Now;
-        return (System.Globalization.ISOWeek.GetWeekOfYear(now), now.Year);
+        // Use local time for week number calculation as this relates to Danish school calendar
+        var localNow = DateTime.Now;
+        return (System.Globalization.ISOWeek.GetWeekOfYear(localNow), localNow.Year);
     }
 
     private async Task<bool> IsWeekLetterAlreadyPosted(string childName, int weekNumber, int year)
@@ -723,6 +725,7 @@ public class SchedulingService : ISchedulingService
 
                 foreach (var reminder in pendingReminders)
                 {
+                    // Reminder times are stored as local time in database, use local time for display
                     var reminderLocalDateTime = reminder.RemindDate.ToDateTime(reminder.RemindTime);
                     var missedBy = DateTime.Now - reminderLocalDateTime;
 
@@ -766,7 +769,7 @@ public class SchedulingService : ISchedulingService
             _logger.LogInformation("Checking for missed scheduled tasks on startup");
 
             var tasks = await _scheduledTaskRepository.GetScheduledTasksAsync();
-            var now = DateTime.Now;
+            var now = DateTime.UtcNow;
             var missedTasks = new List<ScheduledTask>();
 
             foreach (var task in tasks)
