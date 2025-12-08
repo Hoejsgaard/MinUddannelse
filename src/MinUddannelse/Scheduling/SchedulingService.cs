@@ -293,9 +293,18 @@ public class SchedulingService : ISchedulingService
                 return;
             }
 
-            // Create actual reminder for today using the template (UTC for database consistency)
-            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            // Use local time for reminder date since reminders are displayed in local time
+            var today = DateOnly.FromDateTime(DateTime.Now);
             var reminderTime = templateReminder.RemindTime;
+
+            // Check if reminder already exists for today to prevent duplicates
+            if (await _reminderRepository.ReminderExistsForDateAsync(
+                templateReminder.Text, today, reminderTime, templateReminder.ChildName))
+            {
+                _logger.LogInformation("Recurring reminder already exists for today, skipping: '{Description}' for {ChildName}",
+                    templateReminder.Text, templateReminder.ChildName);
+                return;
+            }
 
             var newReminderId = await _reminderRepository.AddReminderAsync(
                 templateReminder.Text,

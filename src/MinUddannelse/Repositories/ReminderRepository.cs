@@ -53,7 +53,8 @@ public class ReminderRepository : IReminderRepository
 
     public async Task<List<Reminder>> GetPendingRemindersAsync()
     {
-        var now = DateTime.UtcNow;
+        // Reminder times are stored in local Copenhagen time, so use local time for comparison
+        var now = DateTime.Now;
         var currentDate = DateOnly.FromDateTime(now);
         var currentTime = TimeOnly.FromDateTime(now);
 
