@@ -372,8 +372,17 @@ public class WeekLetterService : IWeekLetterService
                 _logger.LogInformation("Successfully fetched week letter for {ChildName} week {WeekNumber}/{Year}",
                     child.FirstName, weekInfo.WeekNumber, weekInfo.Year);
 
-                await CacheWeekLetterAsync(child, weekInfo.WeekNumber, weekInfo.Year, fetchedLetter);
-                await LogFinalAudit(child, weekInfo, true);
+                if (!IsWeekLetterEffectivelyEmpty(fetchedLetter))
+                {
+                    await CacheWeekLetterAsync(child, weekInfo.WeekNumber, weekInfo.Year, fetchedLetter);
+                    await LogFinalAudit(child, weekInfo, true);
+                }
+                else
+                {
+                    _logger.LogInformation("Week letter for {ChildName} week {WeekNumber}/{Year} is effectively empty, not caching",
+                        child.FirstName, weekInfo.WeekNumber, weekInfo.Year);
+                }
+
                 return fetchedLetter;
             }
         }
@@ -439,5 +448,40 @@ public class WeekLetterService : IWeekLetterService
         var bytes = System.Text.Encoding.UTF8.GetBytes(content);
         var hash = sha256.ComputeHash(bytes);
         return Convert.ToBase64String(hash);
+    }
+
+    public static bool IsWeekLetterEffectivelyEmpty(JObject? weekLetter)
+    {
+        if (weekLetter == null)
+            return true;
+
+        try
+        {
+            var ugebreve = weekLetter["ugebreve"];
+            if (ugebreve != null)
+            {
+                foreach (var ugeBrev in ugebreve)
+                {
+                    var indhold = ugeBrev?["indhold"];
+                    if (indhold != null)
+                    {
+                        string content = indhold.ToString().Trim();
+                        if (content.Contains("Der er ikke skrevet nogen ugenoter til denne uge") ||
+                            content.Contains("Ingen ugenoter") ||
+                            string.IsNullOrWhiteSpace(content))
+                        {
+                            continue;
+                        }
+                        return false;
+                    }
+                }
+            }
+
+            return true;
+        }
+        catch
+        {
+            return true;
+        }
     }
 }

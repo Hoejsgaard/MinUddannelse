@@ -540,7 +540,7 @@ public class SchedulingService : ISchedulingService
         var date = DateOnly.FromDateTime(firstDayOfWeek);
 
         var weekLetter = await _weekLetterService.GetOrFetchWeekLetterAsync(child, date, true);
-        if (weekLetter == null || IsWeekLetterEffectivelyEmpty(weekLetter))
+        if (weekLetter == null || WeekLetterService.IsWeekLetterEffectivelyEmpty(weekLetter))
         {
             _logger.LogWarning("No week letter available for {ChildName}, will retry later", child.FirstName);
             var isFirstAttempt = await _retryTrackingRepository.IncrementRetryAttemptAsync(child.FirstName, weekNumber, year);
@@ -567,39 +567,6 @@ public class SchedulingService : ISchedulingService
             return null;
         }
         return weekLetter;
-    }
-
-    private static bool IsWeekLetterEffectivelyEmpty(dynamic? weekLetter)
-    {
-        if (weekLetter == null)
-            return true;
-
-        try
-        {
-            if (weekLetter.ugebreve != null)
-            {
-                foreach (var ugeBrev in weekLetter.ugebreve)
-                {
-                    if (ugeBrev?.indhold != null)
-                    {
-                        string content = ugeBrev.indhold.ToString().Trim();
-                        if (content.Contains("Der er ikke skrevet nogen ugenoter til denne uge") ||
-                            content.Contains("Ingen ugenoter") ||
-                            string.IsNullOrWhiteSpace(content))
-                        {
-                            continue;
-                        }
-                        return false;
-                    }
-                }
-            }
-
-            return true;
-        }
-        catch
-        {
-            return true;
-        }
     }
 
     private async Task<(string? content, string? contentHash)> ValidateAndProcessWeekLetterContent(dynamic weekLetter, string childName, int weekNumber, int year)
@@ -881,7 +848,7 @@ public class SchedulingService : ISchedulingService
 
                     var weekLetter = await _weekLetterService.GetOrFetchWeekLetterAsync(child, date, true);
 
-                    if (weekLetter != null && !IsWeekLetterEffectivelyEmpty(weekLetter))
+                    if (weekLetter != null && !WeekLetterService.IsWeekLetterEffectivelyEmpty(weekLetter))
                     {
                         await _retryTrackingRepository.MarkRetryAsSuccessfulAsync(retry.ChildName, retry.WeekNumber, retry.Year);
 

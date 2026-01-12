@@ -101,8 +101,15 @@ public class AgentService : IAgentService
         weekLetter["child"] = child.FirstName;
         _logger.LogInformation("MONITOR: Added child name to week letter: {ChildName}", child.FirstName);
 
-        _weekLetterCache.CacheWeekLetter(child, weekNumber, year, weekLetter);
-        _logger.LogInformation("MONITOR: Cached week letter for {ChildName}", child.FirstName);
+        if (!WeekLetterService.IsWeekLetterEffectivelyEmpty(weekLetter))
+        {
+            _weekLetterCache.CacheWeekLetter(child, weekNumber, year, weekLetter);
+            _logger.LogInformation("MONITOR: Cached week letter for {ChildName}", child.FirstName);
+        }
+        else
+        {
+            _logger.LogInformation("MONITOR: Week letter for {ChildName} is effectively empty, not caching", child.FirstName);
+        }
 
         return weekLetter;
     }

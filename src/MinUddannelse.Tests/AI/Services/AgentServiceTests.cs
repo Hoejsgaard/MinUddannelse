@@ -199,8 +199,17 @@ public class AgentServiceTests
     [Fact]
     public async Task GetWeekLetterAsync_WithoutCache_CallsMinUddannelseClient()
     {
-        // Arrange
-        var freshData = new JObject { ["fresh"] = "data" };
+        // Arrange - use valid week letter structure so it gets cached
+        var freshData = new JObject
+        {
+            ["ugebreve"] = new JArray
+            {
+                new JObject
+                {
+                    ["indhold"] = "Valid week letter content for testing"
+                }
+            }
+        };
         var child = new Child { FirstName = "Test", LastName = "Child" };
         _mockWeekLetterCache.Setup(x => x.GetWeekLetter(It.IsAny<Child>(), It.IsAny<int>(), It.IsAny<int>())).Returns((JObject?)null);
         _mockMinUddannelseClient.Setup(x => x.GetWeekLetter(It.IsAny<Child>(), It.IsAny<DateOnly>(), It.IsAny<bool>())).ReturnsAsync(freshData);
@@ -213,7 +222,6 @@ public class AgentServiceTests
 
         // Assert
         Assert.NotNull(result);
-        Assert.Equal("data", result["fresh"]?.ToString());
         Assert.Equal("Test", result["child"]?.ToString());
         _mockMinUddannelseClient.Verify(x => x.GetWeekLetter(It.IsAny<Child>(), It.IsAny<DateOnly>(), It.IsAny<bool>()), Times.Once());
         _mockWeekLetterCache.Verify(x => x.CacheWeekLetter(It.IsAny<Child>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<JObject>()), Times.Once());
