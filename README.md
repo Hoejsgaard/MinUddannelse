@@ -159,6 +159,12 @@ For Windows deployment, see: **[Windows Deployment Guide](doc/README-Windows-Dep
 
 **The Hope:** We hope this stays the same for the foreseeable future, or MinUddannelse provides better machine integration. Until then, the current approach works reliably.
 
+### Identity Provider Fragmentation
+
+Different municipalities route authentication through different identity providers (IdPs). This project's SAML flow goes through **KMD** (`identity.kmd.dk` / `idpproxy.identity.kmd.dk` / `broker.unilogin.dk`), but other municipalities may use entirely different providers such as **EasyIQ** (`idp.easyiq.dk`). None of these providers offer API tokens, PATs, or any machine-friendly authentication mechanism.
+
+If your municipality uses a different IdP, the current code may not work out of the box. The general principle still applies: if you can log in through a browser without 2FA, it can be automated - but the specific redirect chain will differ and may require adaptation.
+
 ---
 
 ## Quick Start
