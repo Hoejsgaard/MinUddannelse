@@ -37,6 +37,20 @@ public class AiToolsManager : IAiToolsManager
             var date = DateOnly.FromDateTime(parsedDateTime);
             var time = TimeOnly.FromDateTime(parsedDateTime);
 
+            // If no specific time was provided (midnight), use the configured default reminder time
+            if (time == TimeOnly.MinValue)
+            {
+                if (TimeOnly.TryParse(_config.Scheduling.DefaultOnDateReminderTime, out var defaultTime))
+                {
+                    time = defaultTime;
+                }
+                else
+                {
+                    time = new TimeOnly(6, 45);
+                }
+                _logger.LogInformation("No specific time provided, using default reminder time {Time}", time);
+            }
+
             var reminderId = await _reminderRepository.AddReminderAsync(description, date, time, childName);
 
             var childInfo = string.IsNullOrEmpty(childName) ? "" : $" for {childName}";

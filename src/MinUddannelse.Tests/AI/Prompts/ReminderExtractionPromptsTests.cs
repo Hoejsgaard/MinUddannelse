@@ -16,13 +16,13 @@ public class ReminderExtractionPromptsTests
         var result = ReminderExtractionPrompts.GetExtractionPrompt(query, currentTime);
 
         // Assert
-        Assert.Contains("Extract reminder details from this natural language request:", result);
+        Assert.Contains("Extract reminder details from this natural language request", result);
         Assert.Contains(query, result);
         Assert.Contains("2025-10-15 14:30", result);
         Assert.Contains("2025-10-16", result); // tomorrow
-        Assert.Contains("DESCRIPTION: [extracted description]", result);
-        Assert.Contains("DATETIME: [yyyy-MM-dd HH:mm]", result);
-        Assert.Contains("CHILD: [child name or NONE]", result);
+        Assert.Contains("\"description\":", result);
+        Assert.Contains("\"datetime\":", result);
+        Assert.Contains("valid JSON", result);
     }
 
     [Fact]
@@ -36,7 +36,6 @@ public class ReminderExtractionPromptsTests
         var result = ReminderExtractionPrompts.GetExtractionPrompt(query, currentTime);
 
         // Assert
-        Assert.Contains("om 2 minutter", result);
         Assert.Contains("om 30 minutter", result);
         Assert.Contains("2025-10-15 15:00", result); // 30 minutes later
     }
@@ -93,7 +92,7 @@ public class ReminderExtractionPromptsTests
 
         // Assert
         Assert.Contains("Extract ONLY actionable events", result);
-        Assert.Contains("Only include events with confidence >= 0.95", result);
+        Assert.Contains("Only include events with confidence >= 0.80", result);
         Assert.Contains("Types: event, deadline, supply_needed, permission_form", result);
         Assert.Contains("You must respond with ONLY valid JSON", result);
         Assert.Contains("No explanations, no markdown", result);
@@ -231,11 +230,11 @@ public class ReminderExtractionPromptsTests
         // Act
         var result = ReminderExtractionPrompts.GetWeekLetterEventExtractionPrompt(content, currentTime);
 
-        // Assert - Check enhanced filtering rules
-        Assert.Contains("STRICTLY EXCLUDE ALL OF THESE:", result);
-        Assert.Contains("ANY new students, staff, or people joining", result);
-        Assert.Contains("ANY events without immediate preparation needed", result);
-        Assert.Contains("CRITICAL TEST: Ask yourself \"Does this require the parent/student to DO something specific on this day?\"", result);
+        // Assert - Check filtering rules
+        Assert.Contains("EXCLUDE:", result);
+        Assert.Contains("New students, staff, or people joining", result);
+        Assert.Contains("Field trips, excursions, outings", result);
+        Assert.Contains("When in doubt about whether an event is actionable, CREATE the reminder", result);
     }
 
     [Theory]

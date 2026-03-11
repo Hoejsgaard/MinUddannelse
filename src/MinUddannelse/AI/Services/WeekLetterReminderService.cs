@@ -241,7 +241,7 @@ public class WeekLetterReminderService : IWeekLetterReminderService
                     DayOfWeek = weekEvent["day"]?.ToString()
                 };
 
-                if (extractedEvent.ConfidenceScore >= 0.95)
+                if (extractedEvent.ConfidenceScore >= 0.80)
                 {
                     extractedEvents.Add(extractedEvent);
                 }
@@ -261,7 +261,7 @@ public class WeekLetterReminderService : IWeekLetterReminderService
                     IsCurrentWeek = false
                 };
 
-                if (extractedEvent.ConfidenceScore >= 0.95)
+                if (extractedEvent.ConfidenceScore >= 0.80)
                 {
                     extractedEvents.Add(extractedEvent);
                 }

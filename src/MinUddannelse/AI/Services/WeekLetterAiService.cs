@@ -26,12 +26,13 @@ public class WeekLetterAiService : IWeekLetterAiService
     private readonly IConversationManager _conversationManager;
     private readonly IPromptBuilder _promptBuilder;
     private readonly string _aiModel;
+    private readonly string _defaultReminderTime;
 
     private const int MaxConversationHistoryWeekLetter = 20;
     private const int ConversationTrimAmount = 4;
     private const string FallbackToExistingSystem = "FALLBACK_TO_EXISTING_SYSTEM";
 
-    public WeekLetterAiService(string apiKey, ILoggerFactory loggerFactory, IAiToolsManager aiToolsManager, IConversationManager conversationManager, IPromptBuilder promptBuilder, string? model = null)
+    public WeekLetterAiService(string apiKey, ILoggerFactory loggerFactory, IAiToolsManager aiToolsManager, IConversationManager conversationManager, IPromptBuilder promptBuilder, string? model = null, string? defaultReminderTime = null)
     {
         if (string.IsNullOrWhiteSpace(apiKey))
             throw new ArgumentException("API key cannot be null or empty", nameof(apiKey));
@@ -41,6 +42,7 @@ public class WeekLetterAiService : IWeekLetterAiService
         ArgumentNullException.ThrowIfNull(promptBuilder);
 
         _aiModel = model ?? "gpt-3.5-turbo";
+        _defaultReminderTime = defaultReminderTime ?? "06:45";
         _openAiClient = new OpenAIService(new OpenAiOptions()
         {
             ApiKey = apiKey
@@ -462,7 +464,7 @@ Generate the response:";
 
     private async Task<string> HandleCreateReminderQuery(string query)
     {
-        var extractionPrompt = ReminderExtractionPrompts.GetExtractionPrompt(query, DateTime.Now);
+        var extractionPrompt = ReminderExtractionPrompts.GetExtractionPrompt(query, DateTime.Now, _defaultReminderTime);
 
         var chatRequest = new ChatCompletionCreateRequest
         {
@@ -482,48 +484,69 @@ Generate the response:";
             if (response.Successful)
             {
                 var content = response.Choices.First().Message.Content ?? "";
-                _logger.LogInformation("Reminder extraction completed successfully");
+                _logger.LogInformation("Reminder extraction completed successfully: {Content}", content);
 
-                var lines = content.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-                var description = ExtractValue(lines, "DESCRIPTION") ?? "Reminder";
-                var dateTimeStr = ExtractValue(lines, "DATETIME") ?? DateTime.Now.AddHours(1).ToString("yyyy-MM-dd HH:mm");
-                var childName = ExtractValue(lines, "CHILD");
-                var isRecurringStr = ExtractValue(lines, "IS_RECURRING") ?? "false";
-                var recurrenceType = ExtractValue(lines, "RECURRENCE_TYPE") ?? "NONE";
-                var dayOfWeekStr = ExtractValue(lines, "DAY_OF_WEEK") ?? "NONE";
-
-                if (!DateTime.TryParseExact(dateTimeStr, "yyyy-MM-dd HH:mm", null, System.Globalization.DateTimeStyles.None, out _))
+                var reminders = ParseReminderExtractionResponse(content);
+                if (reminders.Count == 0)
                 {
-                    _logger.LogWarning("Invalid datetime format from AI: {DateTime}", dateTimeStr);
-                    dateTimeStr = DateTime.Now.AddHours(1).ToString("yyyy-MM-dd HH:mm");
+                    _logger.LogWarning("No reminders parsed from AI response");
+                    return await GenerateLanguageAwareErrorMessage(query, "extraction_failed");
                 }
 
-                if (childName == "NONE") childName = null;
+                var createdCount = 0;
+                var lastDescription = "";
+                var lastDateTimeStr = "";
+                var lastChildName = (string?)null;
+                var lastIsRecurring = false;
+                var lastRecurrenceType = "NONE";
+                var lastDayOfWeek = 0;
 
-                // Check if this is a recurring reminder
-                var isRecurring = bool.TryParse(isRecurringStr, out var recurring) && recurring;
-
-                // Create the reminder using AiToolsManager (for database operations)
-                string creationResult;
-                if (isRecurring && recurrenceType != "NONE" && dayOfWeekStr != "NONE" && int.TryParse(dayOfWeekStr, out var dayOfWeek))
+                foreach (var reminder in reminders)
                 {
-                    creationResult = await _aiToolsManager.CreateRecurringReminderAsync(description, dateTimeStr, recurrenceType, dayOfWeek, childName);
-                }
-                else
-                {
-                    creationResult = await _aiToolsManager.CreateReminderAsync(description, dateTimeStr, childName);
+                    var description = reminder.Description ?? "Reminder";
+                    var dateTimeStr = reminder.DateTime ?? DateTime.Now.AddHours(1).ToString("yyyy-MM-dd HH:mm");
+                    var childName = reminder.Child;
+                    var isRecurring = reminder.IsRecurring;
+                    var recurrenceType = reminder.RecurrenceType ?? "NONE";
+                    var dayOfWeekVal = reminder.DayOfWeek;
+
+                    if (!DateTime.TryParseExact(dateTimeStr, "yyyy-MM-dd HH:mm", null, System.Globalization.DateTimeStyles.None, out _))
+                    {
+                        _logger.LogWarning("Invalid datetime format from AI: {DateTime}, skipping", dateTimeStr);
+                        continue;
+                    }
+
+                    string creationResult;
+                    if (isRecurring && recurrenceType != "NONE" && dayOfWeekVal.HasValue)
+                    {
+                        creationResult = await _aiToolsManager.CreateRecurringReminderAsync(description, dateTimeStr, recurrenceType, dayOfWeekVal.Value, childName);
+                    }
+                    else
+                    {
+                        creationResult = await _aiToolsManager.CreateReminderAsync(description, dateTimeStr, childName);
+                    }
+
+                    if (creationResult.StartsWith('❌'))
+                    {
+                        _logger.LogWarning("Failed to create reminder: {Result}", creationResult);
+                        continue;
+                    }
+
+                    createdCount++;
+                    lastDescription = description;
+                    lastDateTimeStr = dateTimeStr;
+                    lastChildName = childName;
+                    lastIsRecurring = isRecurring;
+                    lastRecurrenceType = recurrenceType;
+                    lastDayOfWeek = dayOfWeekVal ?? 0;
                 }
 
-                // Check if reminder creation was successful
-                if (creationResult.StartsWith('❌'))
+                if (createdCount == 0)
                 {
-                    // Return error from AiToolsManager
-                    return creationResult;
+                    return await GenerateLanguageAwareErrorMessage(query, "creation_failed");
                 }
 
-                // Generate language-appropriate confirmation response
-                var dayOfWeekForConfirmation = isRecurring && int.TryParse(dayOfWeekStr, out var parsedDayOfWeek) ? parsedDayOfWeek : 0;
-                return await GenerateLanguageAwareConfirmation(query, description, dateTimeStr, childName, isRecurring, recurrenceType, dayOfWeekForConfirmation);
+                return await GenerateLanguageAwareConfirmation(query, lastDescription, lastDateTimeStr, lastChildName, lastIsRecurring, lastRecurrenceType, lastDayOfWeek, createdCount);
             }
             else
             {
@@ -538,8 +561,85 @@ Generate the response:";
         }
     }
 
-    private async Task<string> GenerateLanguageAwareConfirmation(string originalQuery, string description, string dateTime, string? childName, bool isRecurring, string recurrenceType, int dayOfWeek)
+    private List<ParsedReminder> ParseReminderExtractionResponse(string content)
     {
+        try
+        {
+            var cleaned = content.Trim();
+            if (cleaned.StartsWith("```json")) cleaned = cleaned.Substring(7);
+            if (cleaned.StartsWith("```")) cleaned = cleaned.Substring(3);
+            if (cleaned.EndsWith("```")) cleaned = cleaned.Substring(0, cleaned.Length - 3);
+            cleaned = cleaned.Trim();
+
+            var jsonArray = JArray.Parse(cleaned);
+            var reminders = new List<ParsedReminder>();
+
+            foreach (var item in jsonArray)
+            {
+                var childVal = item["child"]?.ToString();
+                if (childVal == "null" || string.IsNullOrWhiteSpace(childVal)) childVal = null;
+
+                reminders.Add(new ParsedReminder
+                {
+                    Description = item["description"]?.ToString(),
+                    DateTime = item["datetime"]?.ToString(),
+                    Child = childVal,
+                    IsRecurring = item["is_recurring"]?.Value<bool>() ?? false,
+                    RecurrenceType = item["recurrence_type"]?.ToString(),
+                    DayOfWeek = item["day_of_week"]?.Type == JTokenType.Null ? null : item["day_of_week"]?.Value<int>()
+                });
+            }
+
+            return reminders;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to parse JSON reminder response, attempting legacy format");
+            return ParseLegacyReminderResponse(content);
+        }
+    }
+
+    private List<ParsedReminder> ParseLegacyReminderResponse(string content)
+    {
+        var lines = content.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        var description = ExtractValue(lines, "DESCRIPTION") ?? "Reminder";
+        var dateTimeStr = ExtractValue(lines, "DATETIME") ?? DateTime.Now.AddHours(1).ToString("yyyy-MM-dd HH:mm");
+        var childName = ExtractValue(lines, "CHILD");
+        var isRecurringStr = ExtractValue(lines, "IS_RECURRING") ?? "false";
+        var recurrenceType = ExtractValue(lines, "RECURRENCE_TYPE") ?? "NONE";
+        var dayOfWeekStr = ExtractValue(lines, "DAY_OF_WEEK") ?? "NONE";
+
+        if (childName == "NONE") childName = null;
+        var isRecurring = bool.TryParse(isRecurringStr, out var recurring) && recurring;
+        int? dayOfWeek = int.TryParse(dayOfWeekStr, out var dow) ? dow : null;
+
+        return new List<ParsedReminder>
+        {
+            new ParsedReminder
+            {
+                Description = description,
+                DateTime = dateTimeStr,
+                Child = childName,
+                IsRecurring = isRecurring,
+                RecurrenceType = recurrenceType,
+                DayOfWeek = dayOfWeek
+            }
+        };
+    }
+
+    private sealed class ParsedReminder
+    {
+        public string? Description { get; set; }
+        public string? DateTime { get; set; }
+        public string? Child { get; set; }
+        public bool IsRecurring { get; set; }
+        public string? RecurrenceType { get; set; }
+        public int? DayOfWeek { get; set; }
+    }
+
+    private async Task<string> GenerateLanguageAwareConfirmation(string originalQuery, string description, string dateTime, string? childName, bool isRecurring, string recurrenceType, int dayOfWeek, int totalCreated = 1)
+    {
+        var countInfo = totalCreated > 1 ? $"\nNote: {totalCreated} reminders were created in total from this request. Mention this in the confirmation." : "";
         var confirmationPrompt = $@"The user made this request: ""{originalQuery}""
 
 I have successfully created a reminder with these details:
@@ -548,7 +648,7 @@ I have successfully created a reminder with these details:
 - Child: {(childName ?? "any child")}
 - Is Recurring: {isRecurring}
 - Recurrence Type: {recurrenceType}
-- Day of Week: {dayOfWeek}
+- Day of Week: {dayOfWeek}{countInfo}
 
 Generate a brief, friendly confirmation message in the SAME LANGUAGE as the user's original request. Use an appropriate emoji (like ✅) and keep it concise. Match the tone and language of the original request.
 

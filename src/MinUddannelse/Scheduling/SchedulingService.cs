@@ -792,6 +792,17 @@ public class SchedulingService : ISchedulingService
                 {
                     try
                     {
+                        // For recurring reminders, skip execution if the missed day has passed.
+                        // A missed Wednesday reminder should not fire on Sunday — just advance NextRun.
+                        if (task.TaskType == "reminder")
+                        {
+                            _logger.LogInformation("Missed recurring reminder task {TaskName} - advancing NextRun without firing (missed day has passed)", task.Name);
+                            task.LastRun = now;
+                            task.NextRun = GetNextRunTime(task.CronExpression, now.AddMinutes(2));
+                            await _scheduledTaskRepository.UpdateScheduledTaskAsync(task);
+                            continue;
+                        }
+
                         _logger.LogInformation("Executing missed scheduled task: {TaskName}", task.Name);
 
                         task.LastRun = now;

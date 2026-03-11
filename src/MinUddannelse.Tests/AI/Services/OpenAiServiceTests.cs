@@ -464,12 +464,13 @@ public class WeekLetterAiServiceTests
         var parameters = constructor.GetParameters();
 
         // Assert
-        Assert.Equal(6, parameters.Length);
+        Assert.Equal(7, parameters.Length);
         Assert.Equal(typeof(string), parameters[0].ParameterType);
         Assert.Equal(typeof(ILoggerFactory), parameters[1].ParameterType);
         Assert.Equal(typeof(IAiToolsManager), parameters[2].ParameterType);
         Assert.Equal(typeof(IConversationManager), parameters[3].ParameterType);
         Assert.Equal(typeof(IPromptBuilder), parameters[4].ParameterType);
         Assert.Equal(typeof(string), parameters[5].ParameterType);
+        Assert.Equal(typeof(string), parameters[6].ParameterType);
     }
 }

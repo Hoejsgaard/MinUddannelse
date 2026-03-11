@@ -6,7 +6,7 @@ using MinUddannelse.Repositories.DTOs;
 
 public static class ReminderExtractionPrompts
 {
-    public static string GetExtractionPrompt(string query, DateTime currentTime)
+    public static string GetExtractionPrompt(string query, DateTime currentTime, string defaultReminderTime = "06:45")
     {
         var nextMonday = GetNextWeekday(currentTime, DayOfWeek.Monday);
         var nextTuesday = GetNextWeekday(currentTime, DayOfWeek.Tuesday);
@@ -16,7 +16,9 @@ public static class ReminderExtractionPrompts
         var nextSaturday = GetNextWeekday(currentTime, DayOfWeek.Saturday);
         var nextSunday = GetNextWeekday(currentTime, DayOfWeek.Sunday);
 
-        return $@"Extract reminder details from this natural language request:
+        return $@"You must respond with ONLY valid JSON. No explanations, no markdown, no text outside the JSON.
+
+Extract reminder details from this natural language request. The user may request MULTIPLE reminders in a single message (e.g. listing several dates). Create a SEPARATE reminder for each date mentioned.
 
 Query: ""{query}""
 
@@ -24,31 +26,11 @@ CHILD NAME EXTRACTION:
 If the query starts with ""[Context: Child X]"", extract X as the child name.
 Example: ""[Context: Child Hans]"" means CHILD: Hans
 
-Extract:
-1. Description: What to remind about
-2. DateTime: When to remind (convert to yyyy-MM-dd HH:mm format)
-3. ChildName: Extract from [Context: Child X] prefix, or if explicitly mentioned in query
-4. IsRecurring: Whether this is a recurring reminder
-5. RecurrenceType: daily, weekly, monthly (if recurring)
-6. DayOfWeek: 0=Sunday, 1=Monday, etc. (for weekly recurrence)
-
 RECURRING PATTERN DETECTION (ONLY these patterns mean recurring):
-Danish patterns for recurring reminders:
-- ""hver dag"" / ""dagligt"" = daily recurring
-- ""hver mandag"" / ""hver mandag morgen"" = weekly recurring (Monday)
-- ""hver tirsdag"" = weekly recurring (Tuesday)
-- ""hver onsdag"" = weekly recurring (Wednesday)
-- ""hver torsdag"" = weekly recurring (Thursday)
-- ""hver fredag"" = weekly recurring (Friday)
-- ""hver lørdag"" = weekly recurring (Saturday)
-- ""hver søndag"" = weekly recurring (Sunday)
+Danish: ""hver dag""/""dagligt"" = daily, ""hver mandag"" = weekly Monday, ""hver tirsdag"" = weekly Tuesday, ""hver onsdag"" = weekly Wednesday, ""hver torsdag"" = weekly Thursday, ""hver fredag"" = weekly Friday, ""hver lørdag"" = weekly Saturday, ""hver søndag"" = weekly Sunday
+English: ""every day""/""daily"" = daily, ""every Monday"" = weekly Monday, ""weekly"" = weekly
 
-English patterns:
-- ""every day"" / ""daily"" = daily recurring
-- ""every Monday"" / ""every Monday morning"" = weekly recurring (Monday)
-- ""weekly"" = weekly recurring (use day from datetime)
-
-ONE-TIME REMINDERS (NOT recurring - these are for THIS/NEXT occurrence only):
+ONE-TIME REMINDERS (NOT recurring - these are for specific dates only):
 Current time is {currentTime:yyyy-MM-dd HH:mm}
 - ""tomorrow"" / ""i morgen"" = {currentTime.Date.AddDays(1):yyyy-MM-dd}
 - ""today"" / ""i dag"" = {currentTime.Date:yyyy-MM-dd}
@@ -59,25 +41,36 @@ Current time is {currentTime:yyyy-MM-dd HH:mm}
 - ""fredag"" (without ""hver"") = {nextFriday:yyyy-MM-dd} (one-time, NOT recurring)
 - ""lørdag"" (without ""hver"") = {nextSaturday:yyyy-MM-dd} (one-time, NOT recurring)
 - ""søndag"" (without ""hver"") = {nextSunday:yyyy-MM-dd} (one-time, NOT recurring)
-- ""next Monday"" = {nextMonday:yyyy-MM-dd} (one-time)
 - ""in 2 hours"" / ""om 2 timer"" = {currentTime.AddHours(2):yyyy-MM-dd HH:mm}
-- ""om 2 minutter"" = {currentTime.AddMinutes(2):yyyy-MM-dd HH:mm}
 - ""om 30 minutter"" = {currentTime.AddMinutes(30):yyyy-MM-dd HH:mm}
+- Specific dates like ""d. 3. maj"", ""18 maj"", ""25 maj"" = resolve to actual yyyy-MM-dd dates
 
-IMPORTANT: A day name without ""hver""/""every"" is a ONE-TIME reminder for the next occurrence of that day.
-""fredag: ingen idrætstøj"" = one-time reminder for {nextFriday:yyyy-MM-dd}, NOT recurring.
+CRITICAL RULES:
+- A day name WITHOUT ""hver""/""every"" is ONE-TIME, not recurring
+- When multiple dates are listed (e.g. ""3. maj, 18 maj og 25 maj""), create a SEPARATE reminder for EACH date
+- ""onsdag d. 3. maj, 18 maj og 25 maj"" = THREE one-time reminders, NOT one recurring reminder
 
-For recurring reminders:
-- Use the NEXT occurrence of the specified day/time as the DateTime
-- Set IsRecurring=true and provide RecurrenceType and DayOfWeek
+REMINDER TIME RULES:
+- The datetime field is WHEN TO SEND THE REMINDER, not when the activity happens
+- Default reminder time is {defaultReminderTime} — use this unless the user explicitly says ""kl."", ""at"", or ""klokken"" followed by a time
+- Times in the reminder TEXT (e.g. ""8-10"", ""kl. 9"") are ACTIVITY times — keep them in the description but do NOT use them as the reminder time
+- Example: ""Husk Mesterdetektiver i dag 8-10"" on March 11 → datetime=""2026-03-11 {defaultReminderTime}"", description=""Husk Mesterdetektiver i dag 8-10""
+- Example: ""påmind mig kl. 14 om at hente pakke"" → datetime uses 14:00 because the user explicitly requested that time
 
-Respond in this exact format:
-DESCRIPTION: [extracted description]
-DATETIME: [yyyy-MM-dd HH:mm]
-CHILD: [child name or NONE]
-IS_RECURRING: [true or false]
-RECURRENCE_TYPE: [daily/weekly/monthly or NONE]
-DAY_OF_WEEK: [0-6 or NONE]";
+Return a JSON array of reminders:
+[
+  {{
+    ""description"": ""What to remind about"",
+    ""datetime"": ""yyyy-MM-dd HH:mm"",
+    ""child"": ""child name or null"",
+    ""is_recurring"": false,
+    ""recurrence_type"": null,
+    ""day_of_week"": null
+  }}
+]
+
+For recurring reminders, set is_recurring=true, recurrence_type=""daily""/""weekly"", day_of_week=0-6 (0=Sunday).
+Response must be valid JSON only.";
     }
 
     private static DateTime GetNextWeekday(DateTime currentTime, DayOfWeek targetDay)
@@ -120,25 +113,24 @@ CRITICAL TEMPORAL RULES:
 3. **Future Events**: Events with specific dates (November, etc.) stay as their actual dates
 4. **Information Only**: Items about ""booking will open"", ""more info coming"" are NOT actionable reminders
 
-ENHANCED ACTIONABILITY FILTERING:
+ACTIONABILITY FILTERING:
 
-✅ ONLY CREATE REMINDERS FOR IMMEDIATE STUDENT/PARENT PREPARATION:
+✅ CREATE REMINDERS FOR:
 - Required supplies/materials needed on specific day (""medbring godt tøj onsdag"", ""tag madpakke med torsdag"")
 - Tests, exams with specific preparation needed (""staveprøve fredag - øv staveord"")
-- Field trips THIS WEEK requiring specific preparation (""tur onsdag - medbring regntøj"")
+- Field trips, excursions, outings (""tur"", ""udflugt"", ""ekskursion"") - these ALWAYS require preparation (appropriate clothing, lunch, etc.) even if the letter doesn't explicitly list what to bring
+- Special school days or events that break the normal routine (""temadag"", ""motionsdag"", ""skolefest"")
+- Deadlines for parents (""aflever"", ""tilmelding inden"", ""svar senest"")
 
-❌ STRICTLY EXCLUDE ALL OF THESE:
-- ANY new students, staff, or people joining (""ny elev"", ""ny lærer"")
-- ANY events without immediate preparation needed (""overnatning 5. november"" - no action until later)
-- ANY meetings, conferences, or gatherings (""skole-hjem samtaler"", ""forældremøde"") - these are calendar events, not actionable reminders
-- ANY ""more info coming"" events (""der kommer snarest mere info"")
-- ANY booking opportunities (""tilmelding åbner"", ""booking opens"") UNLESS it specifies a specific time TODAY or THIS WEEK
-- ANY curriculum information (""vi arbejder med"", ""vi fortsætter"")
-- ANY general announcements (""husk"", ""bemærk"", ""OBS"")
-- ANY events where parents are passive recipients of information
+❌ EXCLUDE:
+- New students, staff, or people joining (""ny elev"", ""ny lærer"")
+- Future events more than 2 weeks away with no immediate action needed
+- Meetings, conferences (""skole-hjem samtaler"", ""forældremøde"") - these are calendar events
+- ""More info coming"" events with no actionable details yet
+- Curriculum information (""vi arbejder med"", ""vi fortsætter"")
+- Events where parents are passive recipients of information only
 
-CRITICAL TEST: Ask yourself ""Does this require the parent/student to DO something specific on this day?""
-If the answer is not clearly YES with a specific action, DO NOT create a reminder.
+IMPORTANT: When in doubt about whether an event is actionable, CREATE the reminder. It is better to remind about something that turns out to be unimportant than to miss a trip or deadline.
 
 DATE PARSING RULES:
 - ""onsdag"" without date = {currentMonday.AddDays(2):yyyy-MM-dd} (current week Wednesday)
@@ -177,7 +169,7 @@ Return JSON with this structure:
 }}
 
 Types: event, deadline, supply_needed, permission_form
-Only include events with confidence >= 0.95 (VERY high confidence for truly actionable items only).
+Only include events with confidence >= 0.80.
 If no actionable events found, return: {{""this_week"": [], ""future"": []}}
 
 Response must be valid JSON only.";
