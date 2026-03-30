@@ -9,6 +9,7 @@ public interface ISchedulingService
     event EventHandler<ChildMessageEventArgs>? MessageReady;
 
     Task StartAsync();
+    Task RunStartupChecksAsync();
     Task StopAsync();
     void TriggerChildWeekLetterReady(ChildWeekLetterEventArgs args);
 }

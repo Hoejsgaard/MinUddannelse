@@ -1,4 +1,5 @@
 namespace MinUddannelse.AI.Services;
+
 using MinUddannelse.Models;
 using MinUddannelse.Repositories.DTOs;
 

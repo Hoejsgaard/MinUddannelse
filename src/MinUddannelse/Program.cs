@@ -133,6 +133,11 @@ public class Program
         }
 
         logger.LogInformation("Started {Count} child agents", childAgents.Count);
+
+        // Run startup checks AFTER ChildAgents are subscribed to events,
+        // so missed reminders are delivered to the correct channels.
+        await schedulingService.RunStartupChecksAsync();
+
         return childAgents;
     }
 

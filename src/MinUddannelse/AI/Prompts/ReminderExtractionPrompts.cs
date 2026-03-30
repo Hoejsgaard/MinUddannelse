@@ -1,4 +1,5 @@
 namespace MinUddannelse.AI.Prompts;
+
 using System.Globalization;
 using MinUddannelse.AI.Prompts;
 using MinUddannelse.Models;

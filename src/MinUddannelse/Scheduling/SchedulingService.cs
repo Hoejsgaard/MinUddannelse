@@ -3,7 +3,6 @@ using MinUddannelse.Content.Processing;
 using MinUddannelse.Content.WeekLetters;
 using MinUddannelse.Models;
 using MinUddannelse.Repositories.DTOs;
-using NCrontab;
 using Newtonsoft.Json.Linq;
 using System.Globalization;
 using System.Security.Cryptography;
@@ -83,20 +82,21 @@ public class SchedulingService : ISchedulingService
         _schedulingTimer = new Timer(CheckScheduledTasksWrapper, null, TimeSpan.Zero, timerInterval);
         _logger.LogInformation("Scheduling service timer started - checking every {IntervalSeconds} seconds", _config.Scheduling.IntervalSeconds);
 
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await CheckForMissedReminders();
-                await CheckForMissedScheduledTasks();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error checking for missed reminders/tasks on startup");
-            }
-        });
-
         return Task.CompletedTask;
+    }
+
+    public async Task RunStartupChecksAsync()
+    {
+        try
+        {
+            await RecalculateAllNextRunTimes();
+            await CheckForMissedReminders();
+            await CheckForMissedScheduledTasks();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error running startup checks");
+        }
     }
 
     public Task StopAsync()
@@ -206,10 +206,11 @@ public class SchedulingService : ISchedulingService
             }
             else
             {
-                var schedule = CrontabSchedule.Parse(task.CronExpression);
-                nextRun = task.LastRun != null
-                    ? schedule.GetNextOccurrence(task.LastRun.Value)
-                    : schedule.GetNextOccurrence(utcNow.AddMinutes(-_config.Scheduling.InitialOccurrenceOffsetMinutes));
+                var fromTime = task.LastRun ?? utcNow.AddMinutes(-_config.Scheduling.InitialOccurrenceOffsetMinutes);
+                var calculatedNextRun = GetNextRunTime(task.CronExpression, fromTime);
+                if (!calculatedNextRun.HasValue)
+                    return false;
+                nextRun = calculatedNextRun.Value;
                 _logger.LogInformation("Task {TaskName} calculated NextRun from cron: {NextRun}", task.Name, nextRun);
             }
 
@@ -230,12 +231,11 @@ public class SchedulingService : ISchedulingService
         }
     }
 
-    private DateTime? GetNextRunTime(string cronExpression, DateTime fromTime)
+    private DateTime? GetNextRunTime(string cronExpression, DateTime fromTimeUtc)
     {
         try
         {
-            var schedule = CrontabSchedule.Parse(cronExpression);
-            return schedule.GetNextOccurrence(fromTime);
+            return CronTimeZoneHelper.GetNextRunTimeUtc(cronExpression, fromTimeUtc);
         }
         catch (Exception ex)
         {
@@ -763,10 +763,10 @@ public class SchedulingService : ISchedulingService
                     }
                     else
                     {
-                        var schedule = CrontabSchedule.Parse(task.CronExpression);
-                        nextRun = task.LastRun != null
-                            ? schedule.GetNextOccurrence(task.LastRun.Value)
-                            : schedule.GetNextOccurrence(now.AddMinutes(-_config.Scheduling.InitialOccurrenceOffsetMinutes));
+                        var fromTime = task.LastRun ?? now.AddMinutes(-_config.Scheduling.InitialOccurrenceOffsetMinutes);
+                        var calculatedNextRun = GetNextRunTime(task.CronExpression, fromTime);
+                        if (!calculatedNextRun.HasValue) continue;
+                        nextRun = calculatedNextRun.Value;
                     }
 
                     // Check if we missed this task (NextRun is in the past and we haven't run it yet)
@@ -826,6 +826,37 @@ public class SchedulingService : ISchedulingService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error checking for missed scheduled tasks");
+        }
+    }
+
+    private async Task RecalculateAllNextRunTimes()
+    {
+        try
+        {
+            var tasks = await _scheduledTaskRepository.GetScheduledTasksAsync();
+            var now = DateTime.UtcNow;
+
+            foreach (var task in tasks)
+            {
+                if (!task.Enabled || string.IsNullOrEmpty(task.CronExpression))
+                    continue;
+
+                var fromTime = task.LastRun ?? now.AddMinutes(-_config.Scheduling.InitialOccurrenceOffsetMinutes);
+                var correctedNextRun = GetNextRunTime(task.CronExpression, fromTime);
+
+                if (correctedNextRun.HasValue && task.NextRun != correctedNextRun)
+                {
+                    _logger.LogInformation(
+                        "Recalculating NextRun for {TaskName}: {OldNextRun} -> {NewNextRun}",
+                        task.Name, task.NextRun, correctedNextRun);
+                    task.NextRun = correctedNextRun;
+                    await _scheduledTaskRepository.UpdateScheduledTaskAsync(task);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error recalculating NextRun times");
         }
     }
 

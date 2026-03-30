@@ -1,4 +1,5 @@
 namespace MinUddannelse.AI.Prompts;
+
 using MinUddannelse.AI.Prompts;
 
 public static class IntentAnalysisPrompts
